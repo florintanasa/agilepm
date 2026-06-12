@@ -1,0 +1,13 @@
+entity_name,field_name,field_type,mandatory,unique
+Project,name,String,true,true
+Project,startDate,LocalDate,true,false
+Milestone,title,String,true,false
+Milestone,targetDate,LocalDate,false,false
+Task,subject,String,true,false
+Task,dueDate,LocalDate,true,false
+TaskComment,content,String,true,false
+Priority,level,String,true,true
+UserProfile,phoneNumber,String,false,false
+UserConfig,theme,String,true,false
+Team,name,String,true,true
+Client,companyName,String,true,true

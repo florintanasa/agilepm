@@ -1,0 +1,10 @@
+entity_name,versioned,audit_of_creation,audit_of_modification,soft_delete
+Project,true,true,true,true
+Milestone,true,true,true,false
+Task,true,true,true,true
+TaskComment,true,true,false,false
+Priority,true,false,false,false
+UserProfile,true,true,true,false
+UserConfig,true,false,false,false
+Team,true,true,true,false
+Client,true,true,true,true
