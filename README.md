@@ -49,20 +49,15 @@ classDiagram
         +String companyName
     }
 
+    Project "1" *-- "N" Milestone : COMPOSITION 1-N
     Milestone "1" --> "N" Task : Association 1-N
     Task "1" *-- "N" TaskComment : COMPOSITION 1-N
     Task "N" --> "1" Priority : Association N-1
     Task "N" --> "1" User : Association N-1
     TaskComment "N" --> "1" User : Association N-1
-    
-    %% Infiltrarea chirurgicală pe User
     User "N" --> "1" Team : Infiltration N-1
-    
-    %% Compozițiile de profil 1:1
     UserProfile "1" --> "1" User : Association 1-1
     UserProfile "1" *-- "1" UserConfig : COMPOSITION 1-1
-    
-    %% Relația complexă Many-to-Many
     Team "N" ..> "N" Client : Many-To-Many N-N
 
 ```
