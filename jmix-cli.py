@@ -426,10 +426,8 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        # CRITICAL FIX: Ensure perfect symmetry with the child field mapping name
-                        mapped_by_prop = (
-                            name.lower() + name[1:]
-                        )  # Strictly produces "task"
+                        # CRITICAL FIX: Point directly to the parent entity name lowercase style
+                        mapped_by_prop = to_camel_case_lower(name)
 
                         new_field = f'    @Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
 
