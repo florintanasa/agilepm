@@ -1,5 +1,5 @@
 source_entity,relation_type,target_entity,field_name,mandatory
-Milestone,COMPOSITION_1:N,Project,project,true
+Milestone,COMPOSITION_1:N,Project,milestones,true
 Task,N:1,Milestone,milestone,false
 TaskComment,COMPOSITION_1:N,Task,comments,false
 Task,N:1,User,assignee,false
