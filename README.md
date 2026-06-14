@@ -49,18 +49,19 @@ classDiagram
         +String companyName
     }
 
-    Project "1" *-- "N" Milestone : COMPOSITION 1-N
-    Milestone "1" --> "N" Task : Association 1-N
-    Task "1" *-- "N" TaskComment : COMPOSITION 1-N
-    Task "N" --> "1" Priority : Association N-1
-    Task "N" --> "1" User : Association N-1
-    TaskComment "N" --> "1" User : Association N-1
-    User "N" --> "1" Team : Infiltration N-1
-    UserProfile "1" --> "1" User : Association 1-1
-    UserProfile "1" *-- "1" UserConfig : COMPOSITION 1-1
-    Team "N" ..> "N" Client : Many-To-Many N-N
-
+    Project "1" *-- "N" Milestone : COMPOSITION_1_N
+    Milestone "1" --> "N" Task : Association 1_N
+    Task "1" *-- "N" TaskComment : COMPOSITION_1_N
+    TaskComment "N" --> "1" Task : Owns task link
+    Task "N" --> "1" Priority : Association N_1
+    Task "N" --> "1" User : Association N_1
+    TaskComment "N" --> "1" User : Association N_1
+    User "N" --> "1" Team : Infiltration N_1
+    UserProfile "1" --> "1" User : Association 1_1
+    UserProfile "1" *-- "1" UserConfig : COMPOSITION_1_1
+    Team "N" ..> "N" Client : Many_To_Many N_N
 ```
+
 
 ### 1. traits.csv (Jmix JPA Architecture Settings)
 
@@ -75,6 +76,7 @@ classDiagram
 | UserConfig | true | false | false | false |
 | Team | true | true | true | false |
 | Client | true | true | true | true |
+
 
 ### 2. entities.csv (Custom Domain Business Attributes)
 
@@ -93,13 +95,16 @@ classDiagram
 | Team | name | String | true | true |
 | Client | companyName | String | true | true |
 
+
 ### 3. relations.csv (Structural Database Core Handshake)
 
 | source_entity | relation_type | target_entity | field_name | mandatory |
 | :--- | :--- | :--- | :--- | :--- |
-| Milestone | COMPOSITION_1:N | Project | project | true |
+| Milestone | COMPOSITION_1:N | Project | milestones | true |
+| Milestone | N:1 | Project | project | true |
 | Task | N:1 | Milestone | milestone | false |
-| Task | COMPOSITION_1:N | Task | comments | false |
+| TaskComment | COMPOSITION_1:N | Task | comments | false |
+| TaskComment | N:1 | Task | task | true |
 | Task | N:1 | User | assignee | false |
 | Task | N:1 | Priority | priority | true |
 | TaskComment | N:1 | User | author | true |
@@ -107,6 +112,7 @@ classDiagram
 | UserProfile | 1:1 | User | user | true |
 | UserConfig | COMPOSITION_1:1 | UserProfile | profile | true |
 | Team | N:N | Client | clients | false |
+
 
 ### 4. roles.csv (Granular Context Access Controls Matrix)
 
