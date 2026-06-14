@@ -415,9 +415,11 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        # CRITICAL ARCHITECTURAL FIX: mappedBy MUST point to the parent field name in lowercase
-                        # inside the child entity (e.g., if parent is "Task", field is "task")
-                        mapped_by_prop = name[0].lower() + name[1:]
+                        # CRITICAL FIX: mappedBy MUST match the parent property name inside the child class!
+                        # Instead of src_class (TaskComment), we format the current parent entity name (Task)
+                        mapped_by_prop = (
+                            name[0].lower() + name[1:]
+                        )  # strictly produces "task"
 
                         new_field = f'    @Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
 
