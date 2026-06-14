@@ -75,6 +75,17 @@ COMPANY = get_company_name() or ""
 company_path = COMPANY.replace(".", "/")
 
 
+def to_camel_case_lower(text):
+    """
+    Transforms any String into a safe camelCase with the first letter strictly lowercase.
+    Example: "TaskComment" -> "taskComment", "Task" -> "task"
+    """
+    if not text:
+        return ""
+    text_clean = text.strip()
+    return text_clean[0].lower() + text_clean[1:]
+
+
 # Function to read traits from csv file traits.casv
 def get_traits_from_csv(csv_path, target_entity_name):
     """Reading traits.csv file and return global traits of entitties."""
@@ -259,11 +270,11 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
 
         # For the OneToMany (1:N) relationship case
         elif rel["type"] == "1:N":
-            f_name = rel["field"]  # ex: comments
-            tgt_class = rel["target"]  # ex: Task
+            f_name = rel["field"]
+            tgt_class = rel["target"]
 
-            # CRITICAL CAMELCASE FIX: mappedBy must point to the parent class name lowercase (e.g., "task")
-            mapped_by_field = tgt_class.lower() + tgt_class[1:]
+            # Use our unified safe function
+            mapped_by_field = to_camel_case_lower(tgt_class)
 
             if mapped_by_field.endswith("_"):
                 mapped_by_field = mapped_by_field[:-1]
