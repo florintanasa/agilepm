@@ -426,10 +426,10 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        # CRITICAL JPA COMPLIANCE FIX: mappedBy must point to the parent property name
-                        # inside the child entity. Instead of src_class, we format the parent class string (name).
-                        first_letter_lower = name[0].lower()
-                        remaining_string = name[1:]
+                        # CRITICAL JPA FIX: mappedBy must match the parent field name inside the child class.
+                        # Instead of 'name' (which is TaskComment), we must format 'tgt_class' (which is Task).
+                        first_letter_lower = tgt_class.lower()
+                        remaining_string = tgt_class[1:]
                         mapped_by_prop = (
                             first_letter_lower + remaining_string
                         )  # strictly converts "Task" to "task"
