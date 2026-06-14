@@ -426,15 +426,20 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        # CRITICAL FIX: Point directly to the parent entity name lowercase style
-                        mapped_by_prop = to_camel_case_lower(name)
+                        # CRITICAL JPA COMPLIANCE FIX: mappedBy must point to the parent property name
+                        # inside the child entity. Instead of src_class, we format the parent class string (name).
+                        first_letter_lower = name[0].lower()
+                        remaining_string = name[1:]
+                        mapped_by_prop = (
+                            first_letter_lower + remaining_string
+                        )  # strictly converts "Task" to "task"
 
                         new_field = f'    @Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
 
                         new_methods = f"    public List<{src_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
                         new_methods += f"    public void set{f_caps}(List<{src_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
-                        # Inject the List import right below the package line safely
+                        # Inject the collection List import at the top of the java metadata layer safely
                         if "import java.util.List;" not in java_tgt_content:
                             package_end_idx = java_tgt_content.find(";")
                             if package_end_idx != -1:
