@@ -2,6 +2,7 @@ source_entity,relation_type,target_entity,field_name,mandatory
 Milestone,COMPOSITION_1:N,Project,milestones,true
 Task,N:1,Milestone,milestone,false
 TaskComment,COMPOSITION_1:N,Task,comments,false
+TaskComment,N:1,Task,task,true
 Task,N:1,User,assignee,false
 Task,N:1,Priority,priority,true
 TaskComment,N:1,User,author,true
