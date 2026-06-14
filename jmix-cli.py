@@ -426,13 +426,10 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        # CRITICAL JPA FIX: mappedBy must match the parent field name inside the child class.
-                        # Instead of 'name' (which is TaskComment), we must format 'tgt_class' (which is Task).
-                        first_letter_lower = tgt_class.lower()
-                        remaining_string = tgt_class[1:]
-                        mapped_by_prop = (
-                            first_letter_lower + remaining_string
-                        )  # strictly converts "Task" to "task"
+                        # FIX PROTECTIE: Izolăm strict doar primul caracter la conversia în litere mici!
+                        first_char_lower = tgt_class[0].lower()
+                        remaining_chars = tgt_class[1:]
+                        mapped_by_prop = first_char_lower + remaining_chars
 
                         new_field = f'    @Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
 
