@@ -259,11 +259,11 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
 
         # For the OneToMany (1:N) relationship case
         elif rel["type"] == "1:N":
-            f_name = rel["field"]
-            tgt_class = rel["target"]
+            f_name = rel["field"]  # ex: comments
+            tgt_class = rel["target"]  # ex: Task
 
-            # Lowercase only the exact first index character
-            mapped_by_field = name[0].lower() + name[1:]
+            # CRITICAL CAMELCASE FIX: mappedBy must point to the parent class name lowercase (e.g., "task")
+            mapped_by_field = tgt_class.lower() + tgt_class[1:]
 
             if mapped_by_field.endswith("_"):
                 mapped_by_field = mapped_by_field[:-1]
