@@ -259,15 +259,14 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
 
         # For the OneToMany (1:N) relationship case
         elif rel["type"] == "1:N":
-            f_name = rel["field"]  # ex: steps
-            tgt_class = rel["target"]  # ex: UserStep
+            f_name = rel["field"]
+            tgt_class = rel["target"]
 
-            # Automatically determine the mappedBy field name from the target entity.
-            # Jmix uses the lowercase version of the source class name.
-            # If the source class has an underscore (User_), we remove it to comply with the Java convention.
+            # Lowercase only the exact first index character
             mapped_by_field = name[0].lower() + name[1:]
+
             if mapped_by_field.endswith("_"):
-                mapped_by_field = mapped_by_field[:-1]  # ex: becomes "user"
+                mapped_by_field = mapped_by_field[:-1]
 
             # Add the necessary imports to the dynamic global set
             dinamic_imports.add("import jakarta.persistence.OneToMany;")
@@ -416,14 +415,23 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        new_field = f'@Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
-                        new_methods = f"    public List<{src_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n    public void set{f_caps}(List<{src_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+                        mapped_by_prop = src_class.lower() + src_class[1:]
+                        new_field = f'    @Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
 
+                        new_methods = f"    public List<{src_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
+                        new_methods += f"    public void set{f_caps}(List<{src_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+
+                        # FIXED CHIRURGICAL INJECTION:
+                        # We force the import injection directly on the main java_tgt_content string variable!
                         if "import java.util.List;" not in java_tgt_content:
-                            java_tgt_content = java_tgt_content.replace(
-                                f"package {COMPANY}.{project_name}.entity;",
-                                f"package {COMPANY}.{project_name}.entity;\nimport java.util.List;",
-                            )
+                            # Locate the end of the package statement and inject right after it
+                            package_end_idx = java_tgt_content.find(";")
+                            if package_end_idx != -1:
+                                java_tgt_content = (
+                                    java_tgt_content[: package_end_idx + 1]
+                                    + "\nimport java.util.List;"
+                                    + java_tgt_content[package_end_idx + 1 :]
+                                )
 
                     # --- CASE B: 1:1 Composition ---
                     elif r_type == "COMPOSITION_1:1":
@@ -2131,7 +2139,7 @@ if __name__ == "__main__":
                     if relations_list:
                         gen_liquibase_relations_changelog(ent, relations_list)
 
-                    # FIX: Dynamically calculate traits_list fields from CSV for the current entity
+                    # DYNAMIC TRAITS COLLECTION: Parse field names from entities.csv for update_messages_entity
                     computed_traits_list = []
                     if os.path.exists("entities.csv"):
                         with open("entities.csv", mode="r", encoding="utf-8") as f:
@@ -2144,6 +2152,14 @@ if __name__ == "__main__":
 
                     if not computed_traits_list:
                         computed_traits_list = ["name"]
+
+                    # TRIGGER MESSAGES: Generate parametric bilingv messages inside the orchestration loop!
+                    update_messages_entity(
+                        project_dir=".",
+                        base_package=COMPANY + "." + PROJECT,
+                        entity_name=ent,
+                        traits_list=computed_traits_list,
+                    )
 
                     # FIX: Trigger messages translation for EVERY entity automatically in the loop!
                     update_messages_entity(
