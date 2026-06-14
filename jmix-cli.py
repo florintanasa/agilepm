@@ -415,16 +415,17 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        mapped_by_prop = src_class.lower() + src_class[1:]
+                        # CRITICAL ARCHITECTURAL FIX: mappedBy MUST point to the parent field name in lowercase
+                        # inside the child entity (e.g., if parent is "Task", field is "task")
+                        mapped_by_prop = name[0].lower() + name[1:]
+
                         new_field = f'    @Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
 
                         new_methods = f"    public List<{src_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
                         new_methods += f"    public void set{f_caps}(List<{src_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
-                        # FIXED CHIRURGICAL INJECTION:
-                        # We force the import injection directly on the main java_tgt_content string variable!
+                        # Inject the List import right below the package line safely
                         if "import java.util.List;" not in java_tgt_content:
-                            # Locate the end of the package statement and inject right after it
                             package_end_idx = java_tgt_content.find(";")
                             if package_end_idx != -1:
                                 java_tgt_content = (
