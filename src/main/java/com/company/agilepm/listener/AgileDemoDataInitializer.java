@@ -3,6 +3,8 @@ package com.company.agilepm.listener;
 import com.company.agilepm.entity.*;
 import io.jmix.core.DataManager;
 import io.jmix.core.security.Authenticated;
+import io.jmix.security.role.assignment.RoleAssignmentRoleType;
+import io.jmix.securitydata.entity.RoleAssignmentEntity;
 import java.time.LocalDate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
@@ -22,98 +24,150 @@ public class AgileDemoDataInitializer {
 	@EventListener
 	@Authenticated
 	public void onApplicationStarted(ApplicationStartedEvent event) {
-		// Verificăm dacă baza de date conține deja priorități de test (evită duplicarea datelor)
+		// Safety check to bypass duplication if test data already exists
 		if (!dm.load(Priority.class).all().maxResults(1).list().isEmpty()) {
 			return;
 		}
 
 		System.out.println(
-			"🚀 [Seeding] Începe popularea automată cu date pentru ecosistemul AgilePM..."
+			"🚀 [Seeding] Launching global data initialization sequence for AgilePM ecosystem..."
 		);
 
-		// 1. Populăm prioritățile (Nomenclator independent)
-		Priority pLow = createPriority("Low");
+		// 1. Initialize Lookups (Executed cleanly)
 		Priority pMedium = createPriority("Medium");
 		Priority pHigh = createPriority("High");
 
-		// 2. Populăm clienții și echipele de dezvoltare
-		Client clientAlfa = createClient("Alfa Software SRL");
-		Client clientBeta = createClient("Beta Enterprise Corp");
+		createPriority("Low");
+		createClient("Alfa Software SRL");
+		createClient("Beta Enterprise Corp");
 
-		Team teamAlpha = createTeam("Echipa Alpha (Backend)");
-		Team teamDelta = createTeam("Echipa Delta (FlowUI)");
+		Team teamAlpha = createTeam("Alpha Backend Squad");
+		Team teamDelta = createTeam("Delta FlowUI Engineers");
 
-		// 3. Creăm utilizatori de sistem Jmix și îi alocăm în echipe (Infiltrare)
-		User employee = dm.create(User.class);
-		employee.setUsername("developer");
-		employee.setPassword(encoder.encode("1"));
-		employee.setFirstName("John");
-		employee.setLastName("Doe");
-		employee.setTeam(teamAlpha); // Alocare în echipă
-		dm.save(employee);
+		// 2. Instantiate and Seed Users for Specific Custom Roles
+		User managerUser = dm.create(User.class);
+		managerUser.setUsername("manager");
+		managerUser.setPassword(encoder.encode("1"));
+		managerUser.setFirstName("Robert");
+		managerUser.setLastName("Taylor");
+		managerUser.setTeam(teamAlpha);
+		dm.save(managerUser);
+		assignRoleToUser(managerUser.getUsername(), "ui-minimal");
+		assignRoleToUser(managerUser.getUsername(), "project-manager");
 
-		// 4. Creăm un proiect principal și etapele sale de business (Milestones)
+		User developerUser = dm.create(User.class);
+		developerUser.setUsername("developer");
+		developerUser.setPassword(encoder.encode("1"));
+		developerUser.setFirstName("John");
+		developerUser.setLastName("Doe");
+		developerUser.setTeam(teamAlpha);
+		dm.save(developerUser);
+		assignRoleToUser(developerUser.getUsername(), "ui-minimal");
+		assignRoleToUser(developerUser.getUsername(), "developer-role");
+
+		User clientUser = dm.create(User.class);
+		clientUser.setUsername("client");
+		clientUser.setPassword(encoder.encode("1"));
+		clientUser.setFirstName("Alice");
+		clientUser.setLastName("Brown");
+		clientUser.setTeam(teamDelta);
+		dm.save(clientUser);
+		assignRoleToUser(clientUser.getUsername(), "ui-minimal");
+		assignRoleToUser(clientUser.getUsername(), "client-viewer");
+
+		// 3. Populate UserConfig & UserProfile (1:1 Relation)
+		UserConfig devConfig = dm.create(UserConfig.class);
+		devConfig.setTheme("Dark-Mode-Zed");
+		dm.save(devConfig);
+
+		UserProfile devProfile = dm.create(UserProfile.class);
+		devProfile.setPhoneNumber("+40712345678");
+		devProfile.setUser(developerUser);
+		dm.save(devProfile);
+
+		UserConfig mgrConfig = dm.create(UserConfig.class);
+		mgrConfig.setTheme("Light-Mode-Standard");
+		dm.save(mgrConfig);
+
+		UserProfile mgrProfile = dm.create(UserProfile.class);
+		mgrProfile.setPhoneNumber("+40799988877");
+		mgrProfile.setUser(managerUser);
+		dm.save(mgrProfile);
+
+		// 4. Populate Operational Data Structures & Compositions
 		Project projectCRM = dm.create(Project.class);
 		projectCRM.setName("Sistem Core CRM Modernization");
 		projectCRM.setStartDate(LocalDate.now());
 		dm.save(projectCRM);
 
+		// FIX: Stocăm instanțele etapelor pentru a le folosi la Task-uri
 		Milestone m1 = createMilestone(
-			"Arhitectura de Bază & CLI",
+			"Core Architecture & CLI Design",
 			LocalDate.now().plusDays(10),
 			projectCRM
 		);
 		Milestone m2 = createMilestone(
-			"Interfața Grafică FlowUI",
+			"FlowUI Nested Form Presentation Layer",
 			LocalDate.now().plusDays(30),
 			projectCRM
 		);
 
-		// 5. Generăm task-uri de lucru legate de etape, priorități și utilizatori
+		// 5. Anchor Tasks Linked to Users, Priorities, and Milestones
 		Task task1 = dm.create(Task.class);
-		task1.setSubject("Implementare sortare topologică în generator");
+		task1.setSubject("Resolve recursive camelCase generation string bugs");
 		task1.setDueDate(LocalDate.now().plusDays(5));
 		task1.setPriority(pHigh);
 		task1.setMilestone(m1);
-		task1.setAssignee(employee);
+		task1.setAssignee(developerUser);
 		dm.save(task1);
 
 		Task task2 = dm.create(Task.class);
-		task2.setSubject("Configurare ecrane de detalii pentru compoziții");
+		task2.setSubject(
+			"Infiltrate custom collection dataGrid tables inside User detail layout"
+		);
 		task2.setDueDate(LocalDate.now().plusDays(15));
 		task2.setPriority(pMedium);
 		task2.setMilestone(m2);
-		task2.setAssignee(employee);
+		task2.setAssignee(developerUser);
 		dm.save(task2);
 
-		// 6. Adăugăm comentarii de test atașate sarcinilor de lucru (Compoziție)
+		// 6. Append Embedded Composition Elements (Task Comments Hierarchy)
 		createComment(
-			"Algoritmul topological funcționează perfect fără recursivitate.",
-			employee,
+			"Topological execution pipeline works perfectly without loops.",
+			developerUser,
 			task1
 		);
 		createComment(
-			"Trebuie verificată corelația atributului mappedBy în clasa părinte.",
-			employee,
+			"Verified mappedBy metadata sync parameters inside parent tracking layout.",
+			managerUser,
 			task1
 		);
 
 		System.out.println(
-			"✨ [Seeding] Toate cele 10 entități ierarhice au primit date inițiale de producție!"
+			"✨ [Seeding] Structural data initialization completed successfully across all 10 modules!"
 		);
 	}
 
-	// Metode helper pentru a păstra execuția compactă și lizibilă
+	// Programmatic Role Assignment Engine Helper
+	private void assignRoleToUser(String username, String roleCode) {
+		RoleAssignmentEntity assignment = dm.create(RoleAssignmentEntity.class);
+		assignment.setUsername(username);
+		assignment.setRoleCode(roleCode);
+		assignment.setRoleType(RoleAssignmentRoleType.RESOURCE);
+		dm.save(assignment);
+	}
+
+	// Structural Helper Factory Methods
 	private Priority createPriority(String level) {
 		Priority p = dm.create(Priority.class);
 		p.setLevel(level);
 		return dm.save(p);
 	}
 
-	private Client createClient(String name) {
+	private void createClient(String name) {
 		Client c = dm.create(Client.class);
 		c.setCompanyName(name);
-		return dm.save(c);
+		dm.save(c);
 	}
 
 	private Team createTeam(String name) {
@@ -130,7 +184,7 @@ public class AgileDemoDataInitializer {
 		Milestone m = dm.create(Milestone.class);
 		m.setTitle(title);
 		m.setTargetDate(target);
-		m.setProject(p); // Legătură compoziție părinte
+		m.setProject(p);
 		return dm.save(m);
 	}
 
@@ -138,7 +192,7 @@ public class AgileDemoDataInitializer {
 		TaskComment tc = dm.create(TaskComment.class);
 		tc.setContent(content);
 		tc.setAuthor(author);
-		tc.setTask(task); // Legătură compoziție părinte task
+		tc.setTask(task);
 		dm.save(tc);
 	}
 }
