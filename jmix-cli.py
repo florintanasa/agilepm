@@ -2203,11 +2203,92 @@ if __name__ == "__main__":
         sys.exit(0)
 
     elif action == "build-all":
-        print("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL SEQUENCE...")
-        # Step 1: Run entities setup
+        print("\n" + "=" * 70)
+        print("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL INDUSTRIAL SEQUENCE...")
+        print("=" * 70)
+
+        # 1. Resolve and calculate the deterministic dependency graph tree sequence
         ordered_list = get_sorted_entities_by_dependency()
-        # (This command can trigger gen-entities, gen-ui, and security in sequence)
-        print("[⚡] Project scaffolding built successfully from CSV maps!")
+        print(f"[*] Calculated execution flow pipeline: {ordered_list}\n")
+
+        # ======================================================================
+        # PHASE 1: SEQUENTIAL ENTITY & LIQUIBASE SCRIPTER SCATTERING
+        # ======================================================================
+        print("[⚡] PHASE 1: Scaffolding Data Models and Database Changelogs...")
+        for ent in ordered_list:
+            if ent == "User":
+                print(
+                    "👤 System User discovered in pipeline. Triggering surgical relationship infiltration..."
+                )
+                relations_list = get_relations_from_csv("relations.csv", "User")
+                if relations_list:
+                    gen_liquibase_relations_changelog("User", relations_list)
+                    inject_relations_into_existing_user(relations_list)
+                    update_messages_entity(".", COMPANY + "." + PROJECT, "User", [])
+            else:
+                print(f"   ▶️ Building Domain Model: {ent}")
+                traits = get_traits_from_csv("traits.csv", ent)
+                fields_list = get_entities_from_csv("entities.csv", ent)
+                relations_list = get_relations_from_csv("relations.csv", ent)
+
+                if fields_list:
+                    gen_entity_mechanic_from_csv(
+                        ent, fields_list, traits, relations_list
+                    )
+                    gen_liquibase_changelog_from_csv(ent, fields_list, traits)
+                    if relations_list:
+                        gen_liquibase_relations_changelog(ent, relations_list)
+
+                    # Calculate entity specific traits array properties from entities.csv layout
+                    computed_traits_list = []
+                    if os.path.exists("entities.csv"):
+                        with open("entities.csv", mode="r", encoding="utf-8") as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                if row["entity_name"].strip() == ent.strip():
+                                    computed_traits_list.append(
+                                        row["field_name"].strip()
+                                    )
+                    if not computed_traits_list:
+                        computed_traits_list = ["name"]
+
+                    # Inject bilingv localization assets dynamically
+                    update_messages_entity(
+                        ".", COMPANY + "." + PROJECT, ent, computed_traits_list
+                    )
+
+        # ======================================================================
+        # PHASE 2: AUTOMATED FLOWUI STRUCTURAL VIEW ARCHITECTURING
+        # ======================================================================
+        print(
+            "\n[⚡] PHASE 2: Architecturing FlowUI Screen Descriptors & Controllers..."
+        )
+        for ent in ordered_list:
+            print(f"   📺 Compiling Layout XML and Java Views for: {ent}")
+            if ent == "User":
+                relations_list = get_relations_from_csv("relations.csv", "User")
+                if relations_list:
+                    inject_list_ui_into_existing_user(relations_list)
+                    inject_detail_ui_into_existing_user(relations_list)
+            else:
+                fields_list = get_entities_from_csv("entities.csv", ent)
+                relations_list = get_relations_from_csv("relations.csv", ent)
+                if fields_list:
+                    gen_list_view_from_csv(ent, fields_list, relations_list)
+                    gen_detail_view_from_csv(ent, fields_list, relations_list)
+                    update_menu(ent)
+
+        # ======================================================================
+        # PHASE 3: PARAMETRIC CONTEXT ACCESS SECURITY ROLE Blueprints
+        # ======================================================================
+        print(
+            "\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter..."
+        )
+        gen_jmix_resource_roles_from_csv()
+
+        print("\n" + "=" * 70)
+        print("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
+        print("=" * 70 + "\n")
         sys.exit(0)
 
     # ======================================================================
