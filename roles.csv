@@ -4,12 +4,12 @@ Project Manager,project-manager,Milestone,true,true,true,true,true,true
 Project Manager,project-manager,Team,true,true,true,true,true,true
 Project Manager,project-manager,Client,true,true,true,true,true,true
 Project Manager,project-manager,Task,true,true,false,true,false,false
-Project Manager,project-manager,TaskComment,true,false,false,true,false,false
+Project Manager,project-manager,TaskComment,true,true,false,true,false,false
 Project Manager,project-manager,Priority,false,false,false,true,false,false
 Developer Role,developer-role,Task,true,true,true,true,true,true
 Developer Role,developer-role,TaskComment,true,true,true,true,true,true
-Developer Role,developer-role,Milestone,true,false,false,true,false,false
+Developer Role,developer-role,Milestone,true,true,false,true,false,false
 Developer Role,developer-role,Priority,false,false,false,true,false,false
 Developer Role,developer-role,User,false,false,false,true,false,false
-Client Viewer,client-viewer,Project,true,false,false,true,false,false
-Client Viewer,client-viewer,Task,true,false,false,true,false,false
+Client Viewer,client-viewer,Project,true,true,false,true,false,false
+Client Viewer,client-viewer,Task,true,true,false,true,false,false
