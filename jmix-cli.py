@@ -1049,7 +1049,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
 
     # XML Synthesis Template (Keeping your clean structural layout tags intact)
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<view xmlns="http://jmix.io"
+<view xmlns="http://jmix.io/schema/flowui/view"
       title="msg://{name.lower()}DetailView.title"
       focusComponent="form">
     <data>
@@ -1063,7 +1063,11 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     <facets>
         <dataLoadCoordinator auto="true"/>
     </facets>
-    <layout>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <layout classNames="fluid-layout" width="100%">
         <formLayout id="form" dataContainer="{name.lower()}Dc">
 {form_components}        </formLayout>
 """
