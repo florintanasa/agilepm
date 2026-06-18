@@ -962,17 +962,15 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     # 1. Base property generation for fetchPlan
     fetch_plan_properties = ""
     for field in fields_list:
-        # UNIVERSAL KEY FIX: Dynamically detect whether the key is 'field' or 'field_name'
         f_name = field.get(
             "field", field.get("field_name", field.get("name", ""))
         ).strip()
         if f_name:
             fetch_plan_properties += f'                <property name="{f_name}"/>\n'
 
-    # 2. Base form elements generation
-    form_components = ""
+    # 2. Base form elements generation (xml_form_components)
+    xml_form_components = ""
     for field in fields_list:
-        # UNIVERSAL KEY FIX: Dynamically detect whether the key is 'field' or 'field_name'
         f_name = field.get(
             "field", field.get("field_name", field.get("name", ""))
         ).strip()
@@ -987,20 +985,27 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         )
 
         if f_type == "Boolean":
-            form_components += f'            <checkbox id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
-        elif f_type == "LocalDate":
-            form_components += f'            <datePicker id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
+            xml_form_components += f'            <checkbox id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
+        elif f_type == "LocalDate" or f_type == "Date":
+            xml_form_components += f'            <datePicker id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
         else:
-            form_components += f'            <textField id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
+            xml_form_components += f'            <textField id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
 
-    # 3. Process relationships mapping variables inside the layout
+    # 3. Process relationships and build intelligent entityComboBox / 1:1 structures
+    xml_relation_data_containers = ""
+
     for rel in relations_list:
-        # UNIVERSAL KEY FIX: Dynamically handle both raw CSV keys and get_relations_from_csv shorthand keys
-        r_type = rel.get("type", rel.get("relation_type", "")).strip().upper()
+        # FIXED: Normalize and safely evaluate relation types supporting both N:1 and N_1 syntaxes universally
+        r_type = (
+            rel.get("type", rel.get("relation_type", ""))
+            .strip()
+            .upper()
+            .replace(":", "_")
+        )
         f_name = rel.get("field", rel.get("field_name", "")).strip()
-        tgt_entity = rel.get("target", rel.get("target_entity", "")).strip()
+        tgt_class = rel.get("target", rel.get("target_entity", "")).strip()
 
-        if not r_type or not f_name or not tgt_entity:
+        if not r_type or not f_name or not tgt_class:
             continue
 
         label_readable = (
@@ -1009,15 +1014,32 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
             .capitalize()
         )
 
-        if r_type == "N:1":
+        # RESTORED AND FULLY FIXED YOUR NATIVE N_1 COLLECTION CONTAINER LOGIC
+        if r_type == "N_1":
             fetch_plan_properties += (
                 f'                <property name="{f_name}" fetchPlan="_base"/>\n'
             )
-            form_components += "            \n"
-            form_components += "                \n"
-            form_components += "            \n"
+            tgt_lower = tgt_class.lower()
 
-        elif r_type in ["1:1", "COMPOSITION_1_1"]:
+            # SAFE TEXT BLUEPRINTS: Using square brackets to bypass aggressive web filters completely
+            xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
+            xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
+            xml_relation_data_containers += (
+                f'            <loader id="{tgt_lower}sDl">\n'
+            )
+            xml_relation_data_containers += "                <query>\n"
+            xml_relation_data_containers += (
+                f"                   <![CDATA[select e from {tgt_class} e]]>\n"
+            )
+            xml_relation_data_containers += "                </query>\n"
+            xml_relation_data_containers += "            </loader>\n"
+            xml_relation_data_containers += "        </collection>\n"
+
+            # Add the entityCombobox component safely using placeholder brackets
+            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc"/>\n'
+
+        # INTEGRATE NEW 1:1 / COMPOSITION_1_1 DOT-NOTATION BLUEPRINT EXTENSION
+        elif r_type in ["1_1", "COMPOSITION_1_1"]:
             print(
                 f"   [UI-Detail-Extension] Mapping 1:1 dot-notation elements for: '{f_name}'"
             )
@@ -1025,41 +1047,43 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
                 f'                <property name="{f_name}" fetchPlan="_base"/>\n'
             )
 
-            # Extract child fields dynamically from entities.csv
-            nested_attributes = []
-            if os.path.exists("entities.csv"):
-                with open("entities.csv", mode="r", encoding="utf-8") as f_csv:
-                    reader = csv.DictReader(f_csv)
-                    for row in reader:
-                        if row["entity_name"].strip() == tgt_entity:
-                            nested_attributes.append(row["field_name"].strip())
-            if not nested_attributes:
-                nested_attributes = ["name"]
+            if tgt_class == "User":
+                xml_form_components += f'            <textField id="{f_name}UsernameField" property="{f_name}.username" label="{label_readable} Username"/>\n'
+                xml_form_components += f'            <textField id="{f_name}FirstNameField" property="{f_name}.firstName" label="{label_readable} First Name"/>\n'
+            else:
+                nested_attributes = []
+                if os.path.exists("entities.csv"):
+                    with open("entities.csv", mode="r", encoding="utf-8") as f_csv:
+                        reader = csv.DictReader(f_csv)
+                        for row in reader:
+                            if row["entity_name"].strip() == tgt_class:
+                                nested_attributes.append(row["field_name"].strip())
+                if not nested_attributes:
+                    nested_attributes = ["name"]
 
-            # Stack Dot-Notation components right into the base form components block
-            for n_attr in nested_attributes:
-                dot_path = f"{f_name}.{n_attr}"
-                component_id = f"{f_name}{n_attr.capitalize()}Field"
-                nested_label = (
-                    "".join([" " + c if c.isupper() else c for c in n_attr])
-                    .strip()
-                    .capitalize()
-                )
-                form_components += f'            <textField id="{component_id}" property="{dot_path}" label="{label_readable} {nested_label}"/>\n'
+                for n_attr in nested_attributes:
+                    dot_path = f"{f_name}.{n_attr}"
+                    component_id = f"{f_name}{n_attr.capitalize()}Field"
+                    nested_label = (
+                        "".join([" " + c if c.isupper() else c for c in n_attr])
+                        .strip()
+                        .capitalize()
+                    )
+                    xml_form_components += f'            <textField id="{component_id}" property="{dot_path}" label="{label_readable} {nested_label}"/>\n'
 
-    # XML Synthesis Template (Keeping your clean structural layout tags intact)
+    # XML Template Synthesis matching your native structure layout anchors
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
       title="msg://{name.lower()}DetailView.title"
       focusComponent="form">
     <data>
-   	<instance id="{name.lower()}Dc"
-                 class="{COMPANY}.{project_name}.entity.{name}">
+   		<instance id="{name.lower()}Dc"
+                 	class="{COMPANY}.{project_name}.entity.{name}">
             <fetchPlan extends="_base">
 {fetch_plan_properties}            </fetchPlan>
             <loader id="{name.lower()}Dl"/>
         </instance>
-    </data>
+{xml_relation_data_containers}    </data>
     <facets>
         <dataLoadCoordinator auto="true"/>
     </facets>
@@ -1069,7 +1093,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     </actions>
     <layout classNames="fluid-layout" width="100%">
         <formLayout id="form" dataContainer="{name.lower()}Dc">
-{form_components}        </formLayout>
+{xml_form_components}        </formLayout>
 """
 
     # We check if this entity is a parent of a COMPOSITION_1:N mapping inside relations.csv
@@ -1081,9 +1105,10 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         with open("relations.csv", mode="r", encoding="utf-8") as f_rel:
             reader = csv.DictReader(f_rel)
             for row in reader:
+                current_r_type = row["relation_type"].strip().upper().replace(":", "_")
                 if (
                     row["target_entity"].strip() == name
-                    and row["relation_type"].strip().upper() == "COMPOSITION_1:N"
+                    and current_r_type == "COMPOSITION_1_N"
                 ):
                     is_parent_of_composition = True
                     comp_field_name = row["field_name"].strip()
@@ -1093,7 +1118,6 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         print(
             f" 🖥️ Injecting 1:N Composition UI Layout constraints for property: {comp_field_name}"
         )
-        # Append your beautiful nested dataGrid block right below the formLayout closing boundaries
         xml_content += f"""        <vbox id="compositionBox" width="100%" height="100%">
             <hbox id="buttonsPanel" classNames="buttons-panel">
                 <button id="createBtn" action="compositionDataGrid.create"/>
@@ -1113,7 +1137,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         </vbox>
 """
 
-    # Close layout and view elements matching your git exact template syntax
+    # Closing anchors and hbox layout
     xml_content += """        <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>
@@ -1138,8 +1162,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     with open(xml_file_path, "w", encoding="utf-8") as f:
         f.write(xml_content)
 
-    # 4. GENERATE JAVA FLOWUI CONTROLLER
-    # Added all mandatory Vaadin, Spring, and Jmix Model metadata imports
+    # 4. GENERATE JAVA FLOWUI CONTROLLER (With accurate wiring dependencies imports)
     java_content = f"""package {COMPANY}.{project_name}.view.{name.lower()};
 
 import {COMPANY}.{project_name}.entity.{name};
@@ -1155,12 +1178,10 @@ public class {java_class_name} extends StandardDetailView<{name}> {{
 """
 
     if is_parent_of_composition:
-        # FIXED: Injected target child entity package import + safe model dataContext wrappers
         java_content = java_content.replace(
             f"import {COMPANY}.{project_name}.entity.{name};",
             f"import {COMPANY}.{project_name}.entity.{name};\nimport {COMPANY}.{project_name}.entity.{comp_src_class};\nimport io.jmix.flowui.model.DataContext;\nimport io.jmix.flowui.model.CollectionPropertyContainer;",
         )
-
         java_content += f"""
     @Autowired
     private DataContext dataContext;
