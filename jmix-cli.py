@@ -1134,10 +1134,13 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         f.write(xml_content)
 
     # 4. GENERATE JAVA FLOWUI CONTROLLER
+    # Added all mandatory Vaadin, Spring, and Jmix Model metadata imports
     java_content = f"""package {COMPANY}.{project_name}.view.{name.lower()};
 
 import {COMPANY}.{project_name}.entity.{name};
+import com.vaadin.flow.router.Route;
 import io.jmix.flowui.view.*;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Route(value = "{view_id}/:id", layout = DefaultMainViewParent.class)
 @ViewController("{name}.detail")
@@ -1147,6 +1150,12 @@ public class {java_class_name} extends StandardDetailView<{name}> {{
 """
 
     if is_parent_of_composition:
+        # FIXED: Injected target child entity package import + safe model dataContext wrappers
+        java_content = java_content.replace(
+            f"import {COMPANY}.{project_name}.entity.{name};",
+            f"import {COMPANY}.{project_name}.entity.{name};\nimport {COMPANY}.{project_name}.entity.{comp_src_class};\nimport io.jmix.flowui.model.DataContext;\nimport io.jmix.flowui.model.CollectionPropertyContainer;",
+        )
+
         java_content += f"""
     @Autowired
     private DataContext dataContext;
