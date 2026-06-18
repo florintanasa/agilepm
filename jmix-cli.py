@@ -293,26 +293,68 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
             java_relation_methods += f"    public void set{f_caps}(List<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
         # For the OneToOne (1:1) relationship case
-        elif rel["type"] == "1:1":
-            f_name = rel["field"]
-            tgt_class = rel["target"]
-            sql_fk_col = f"{f_name.upper()}_ID"
+        elif rel["type"].strip().upper() == "1:1":
+            f_name = rel["field"].strip()
+            tgt_class = rel["target"].strip()
 
+            # 1. Populate your native 'dinamic_imports' set
             dinamic_imports.add("import jakarta.persistence.OneToOne;")
-            dinamic_imports.add("import jakarta.persistence.FetchType;")
             dinamic_imports.add("import jakarta.persistence.JoinColumn;")
+            dinamic_imports.add("import jakarta.persistence.FetchType;")
 
-            join_props = f'name = "{sql_fk_col}"'
-            if rel["mandatory"]:
-                join_props += ", nullable = false"
+            # 2. Append the field to your true relationship fields accumulator
+            sql_fk_col = f"{f_name.upper()}_ID"
+            java_relation_fields += f'    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
 
-            java_relation_fields += f"    @JoinColumn({join_props})\n"
-            java_relation_fields += "    @OneToOne(fetch = FetchType.LAZY)\n"
-            java_relation_fields += f"    private {tgt_class} {f_name};\n\n"
-
+            # 3. Append the methods to your true relationship methods accumulator
             f_caps = f_name[0].upper() + f_name[1:]
             java_relation_methods += f"    public {tgt_class} get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
             java_relation_methods += f"    public void set{f_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+
+            # 4. Inverse mapping: Infiltrate reciprocal @OneToOne into the parent entity class
+            tgt_file_path = os.path.join(
+                PROIECT_PATH,
+                "src",
+                "main",
+                "java",
+                company_path,
+                project_name,
+                "entity",
+                f"{tgt_class}.java",
+            )
+            if os.path.exists(tgt_file_path):
+                java_tgt_content = open(tgt_file_path, "r", encoding="utf-8").read()
+                inv_field_name = name[0].lower() + name[1:]
+
+                if f"private {name} {inv_field_name};" not in java_tgt_content:
+                    print(
+                        f" 🔗 Infiltrating inverse 1:1 association into the parent class: {tgt_class}"
+                    )
+                    inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {name} {inv_field_name};\n\n'
+
+                    inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
+                    inv_methods = f"    public {name} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
+                    inv_methods += f"    public void set{inv_caps}({name} {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
+
+                    tgt_last_brace = java_tgt_content.rfind("}")
+                    if tgt_last_brace != -1:
+                        java_tgt_content = (
+                            java_tgt_content[:tgt_last_brace]
+                            + inv_field
+                            + inv_methods
+                            + java_tgt_content[tgt_last_brace:]
+                        )
+
+                        if (
+                            "import jakarta.persistence.OneToOne;"
+                            not in java_tgt_content
+                        ):
+                            java_tgt_content = java_tgt_content.replace(
+                                f"package {COMPANY}.{project_name}.entity;",
+                                f"package {COMPANY}.{project_name}.entity;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.FetchType;",
+                            )
+                        with open(tgt_file_path, "w", encoding="utf-8") as f:
+                            f.write(java_tgt_content)
 
         # For the ManyToMany (N:N) relationship case
         elif rel["type"] == "N:N":
@@ -448,21 +490,73 @@ public class {name} {{
 
                     # --- CASE B: 1:1 Composition ---
                     elif r_type == "COMPOSITION_1:1":
-                        new_field = f'@Composition\n    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{mapped_by_prop}")\n    private {src_class} {f_name};\n\n'
+                        # CRITICAL JPA FIX: The parent entity defines @Composition and @JoinColumn.
+                        # It holds the foreign key column (e.g. PROFILE_ID) inside its database table structure.
+                        sql_fk_col = f"{f_name.upper()}_ID"
+                        new_field = f'@Composition\n    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {src_class} {f_name};\n\n'
                         new_methods = f"    public {src_class} get{f_caps}() {{\n        return {f_name};\n    }}\n\n    public void set{f_caps}({src_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
-                    # Inject native Jmix @Composition into the package header
+                        # Inverse mapping setup: Inject the bidirectional mappedBy reference into the child class (src_class)
+                        src_file_path = os.path.join(
+                            PROIECT_PATH,
+                            "src",
+                            "main",
+                            "java",
+                            company_path,
+                            project_name,
+                            "entity",
+                            f"{src_class}.java",
+                        )
+                        if os.path.exists(src_file_path):
+                            java_src_content = open(
+                                src_file_path, "r", encoding="utf-8"
+                            ).read()
+                            inv_field_name = name.lower() + name[1:]
+
+                            if (
+                                f"private {name} {inv_field_name};"
+                                not in java_src_content
+                            ):
+                                print(
+                                    f" 🔗 Infiltrating inverse 1:1 mappedBy link into the child composition class: {src_class}"
+                                )
+                                inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {name} {inv_field_name};\n\n'
+                                inv_caps = inv_field_name.upper() + inv_field_name[1:]
+                                inv_methods = f"    public {name} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
+                                inv_methods += f"    public void set{inv_caps}({name} {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
+
+                                src_last_brace = java_src_content.rfind("}")
+                                if src_last_brace != -1:
+                                    java_src_content = (
+                                        java_src_content[:src_last_brace]
+                                        + inv_field
+                                        + inv_methods
+                                        + java_src_content[src_last_brace:]
+                                    )
+                                    if (
+                                        "import jakarta.persistence.OneToOne;"
+                                        not in java_src_content
+                                    ):
+                                        java_src_content = java_src_content.replace(
+                                            f"package {COMPANY}.{project_name}.entity;",
+                                            f"package {COMPANY}.{project_name}.entity;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.FetchType;",
+                                        )
+                                    with open(
+                                        src_file_path, "w", encoding="utf-8"
+                                    ) as f:
+                                        f.write(java_src_content)
+
+                    # Inject dynamic Jmix @Composition import into the package header
                     if (
                         "import io.jmix.core.metamodel.annotation.Composition;"
                         not in java_tgt_content
                     ):
                         java_tgt_content = java_tgt_content.replace(
                             f"package {COMPANY}.{project_name}.entity;",
-                            f"package {COMPANY}.{project_name}.entity;\nimport io.jmix.core.metamodel.annotation.Composition;",
+                            f"package {COMPANY}.{project_name}.entity;\nimport io.jmix.core.metamodel.annotation.Composition;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.JoinColumn;\nimport jakarta.persistence.FetchType;",
                         )
 
                     # PERFORMING MANUAL FIELD INSERTION:
-                    # We are looking for the line with the four spaces to the left to prevent indentation duplication
                     if "    public UUID getId()" in java_tgt_content:
                         old_anchor = "    public UUID getId()"
                         replacement = "    " + new_field + "    public UUID getId()"
@@ -860,75 +954,147 @@ public class {name}ListView extends StandardListView<{name}> {{
 
 # Function to generate the detail-view screen
 def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
-    lower_name = name.lower()
+    print(f" 🖥️ Starting FlowUI Detail View architecture for entity: '{name}'")
 
-    # 1. Generate the form components dynamically
-    xml_form_components = ""
+    view_id = f"{name.lower()}-detail-view"
+    java_class_name = f"{name}DetailView"
+
+    # 1. Base property generation for fetchPlan
+    fetch_plan_properties = ""
     for field in fields_list:
-        f_name = field["name"]
-        f_type = field["type"].lower()
+        f_name = field["field_name"].strip()
+        fetch_plan_properties += f'                <property name="{f_name}"/>\n'
 
-        if f_type in ["boolean", "bool"]:
-            xml_form_components += (
-                f'            <checkbox id="{f_name}Field" property="{f_name}"/>\n'
-            )
-        elif f_type in ["date", "localdate", "datetime", "localdatetime"]:
-            xml_form_components += (
-                f'            <datePicker id="{f_name}Field" property="{f_name}"/>\n'
-            )
+    # 2. Base form elements generation
+    form_components = ""
+    for field in fields_list:
+        f_name = field["field_name"].strip()
+        f_type = field["field_type"].strip()
+        label_readable = (
+            "".join([" " + c if c.isupper() else c for c in f_name])
+            .strip()
+            .capitalize()
+        )
+
+        if f_type == "Boolean":
+            form_components += f'            <checkbox id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
+        elif f_type == "LocalDate":
+            form_components += f'            <datePicker id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
         else:
-            xml_form_components += (
-                f'            <textField id="{f_name}Field" property="{f_name}"/>\n'
-            )
+            form_components += f'            <textField id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
 
-    # 2. Add the intelligent entityComboBox component for N:1 relationships
-    xml_relation_data_containers = ""
+    # 3. Process relationships mapping variables inside the layout
     for rel in relations_list:
-        if rel["type"] == "N:1":
-            f_name = rel["field"]  # ex: step, user
-            tgt_class = rel["target"]  # ex: Step, User_
-            tgt_lower = tgt_class.lower()
+        r_type = rel["relation_type"].strip().upper()
+        f_name = rel["field"].strip()
+        tgt_entity = rel["target_entity"].strip()
+        label_readable = (
+            "".join([" " + c if c.isupper() else c for c in f_name])
+            .strip()
+            .capitalize()
+        )
 
-            # Build a dynamic CollectionContainer to load data from the target table
-            xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
-            xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
-            xml_relation_data_containers += (
-                f'            <loader id="{tgt_lower}sDl">\n'
+        if r_type == "N:1":
+            fetch_plan_properties += (
+                f'                <property name="{f_name}" fetchPlan="_base"/>\n'
             )
-            xml_relation_data_containers += "                <query>\n"
-            xml_relation_data_containers += (
-                f"                   <![CDATA[select e from {tgt_class} e]]>\n"
+            form_components += "            \n"
+            form_components += "                \n"
+            form_components += "            \n"
+
+        elif r_type in ["1:1", "COMPOSITION_1_1"]:
+            print(
+                f"   [UI-Detail-Extension] Mapping 1:1 dot-notation elements for: '{f_name}'"
             )
-            xml_relation_data_containers += "                </query>\n"
-            xml_relation_data_containers += "            </loader>\n"
-            xml_relation_data_containers += "        </collection>\n"
+            fetch_plan_properties += (
+                f'                <property name="{f_name}" fetchPlan="_base"/>\n'
+            )
 
-            # Add the entityCombobox component connected to the itemsContainer
-            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc"/>\n'
+            # Extract child fields dynamically from entities.csv
+            nested_attributes = []
+            if os.path.exists("entities.csv"):
+                with open("entities.csv", mode="r", encoding="utf-8") as f_csv:
+                    reader = csv.DictReader(f_csv)
+                    for row in reader:
+                        if row["entity_name"].strip() == tgt_entity:
+                            nested_attributes.append(row["field_name"].strip())
+            if not nested_attributes:
+                nested_attributes = ["name"]
 
-    # 2. XML FlowUI Structure for detail-view
+            # Stack Dot-Notation components right into the base form components block
+            for n_attr in nested_attributes:
+                dot_path = f"{f_name}.{n_attr}"
+                component_id = f"{f_name}{n_attr.capitalize()}Field"
+                nested_label = (
+                    "".join([" " + c if c.isupper() else c for c in n_attr])
+                    .strip()
+                    .capitalize()
+                )
+                form_components += f'            <textField id="{component_id}" property="{dot_path}" label="{label_readable} {nested_label}"/>\n'
+
+    # XML Synthesis Template (Keeping your clean structural layout tags intact)
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://{lower_name}DetailView.title"
+<view xmlns="http://jmix.io"
+      title="msg://{name.lower()}DetailView.title"
       focusComponent="form">
     <data>
-    	<instance id="{lower_name}Dc"
-                  class="{COMPANY}.{project_name}.entity.{name}">
-            <fetchPlan extends="_base"/>
-            <loader id="{lower_name}Dl"/>
+
+            <fetchPlan extends="_base">
+{fetch_plan_properties}            </fetchPlan>
+            <loader id="{name.lower()}Dl"/>
         </instance>
-{xml_relation_data_containers}    </data>
+    </data>
     <facets>
         <dataLoadCoordinator auto="true"/>
     </facets>
-    <actions>
-        <action id="saveAction" type="detail_saveClose"/>
-        <action id="closeAction" type="detail_close"/>
-    </actions>
-    <layout classNames="fluid-layout" width="100%">
-        <formLayout id="form" dataContainer="{lower_name}Dc">
-{xml_form_components}        </formLayout>
-        <hbox id="detailActions">
+    <layout>
+        <formLayout id="form" dataContainer="{name.lower()}Dc">
+{form_components}        </formLayout>
+"""
+
+    # We check if this entity is a parent of a COMPOSITION_1:N mapping inside relations.csv
+    is_parent_of_composition = False
+    comp_field_name = ""
+    comp_src_class = ""
+
+    if os.path.exists("relations.csv"):
+        with open("relations.csv", mode="r", encoding="utf-8") as f_rel:
+            reader = csv.DictReader(f_rel)
+            for row in reader:
+                if (
+                    row["target_entity"].strip() == name
+                    and row["relation_type"].strip().upper() == "COMPOSITION_1:N"
+                ):
+                    is_parent_of_composition = True
+                    comp_field_name = row["field_name"].strip()
+                    comp_src_class = row["source_entity"].strip()
+
+    if is_parent_of_composition:
+        print(
+            f" 🖥️ Injecting 1:N Composition UI Layout constraints for property: {comp_field_name}"
+        )
+        # Append your beautiful nested dataGrid block right below the formLayout closing boundaries
+        xml_content += f"""        <vbox id="compositionBox" width="100%" height="100%">
+            <hbox id="buttonsPanel" classNames="buttons-panel">
+                <button id="createBtn" action="compositionDataGrid.create"/>
+                <button id="editBtn" action="compositionDataGrid.edit"/>
+                <button id="removeBtn" action="compositionDataGrid.remove"/>
+            </hbox>
+            <dataGrid id="compositionDataGrid" dataContainer="{comp_field_name}Dc" width="100%" minHeight="20em">
+                <actions>
+                    <action id="create" type="list_create"/>
+                    <action id="edit" type="list_edit"/>
+                    <action id="remove" type="list_remove"/>
+                </actions>
+                <columns resizable="true">
+                    <column property="id"/>
+                </columns>
+            </dataGrid>
+        </vbox>
+"""
+
+    # Close layout and view elements matching your git exact template syntax
+    xml_content += """        <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>
         </hbox>
@@ -936,119 +1102,68 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
 </view>
 """
 
-    # 3. Java Controller Structure for detail-view
-    java_content = f"""package {COMPANY}.{project_name}.view.{lower_name};
+    # IO operations for XML saving
+    xml_dir = os.path.join(
+        PROIECT_PATH,
+        "src",
+        "main",
+        "resources",
+        company_path,
+        project_name,
+        "view",
+        name.lower(),
+    )
+    os.makedirs(xml_dir, exist_ok=True)
+    xml_file_path = os.path.join(xml_dir, f"{name.lower()}-detail-view.xml")
+    with open(xml_file_path, "w", encoding="utf-8") as f:
+        f.write(xml_content)
+
+    # 4. GENERATE JAVA FLOWUI CONTROLLER
+    java_content = f"""package {COMPANY}.{project_name}.view.{name.lower()};
 
 import {COMPANY}.{project_name}.entity.{name};
-import {COMPANY}.{project_name}.view.main.MainView;
-import com.vaadin.flow.router.Route;
 import io.jmix.flowui.view.*;
 
-@Route(value = "{lower_name}s/:id", layout = MainView.class)
+@Route(value = "{view_id}/:id", layout = DefaultMainViewParent.class)
 @ViewController("{name}.detail")
-@ViewDescriptor("{lower_name}-detail-view.xml")
-@EditedEntityContainer("{lower_name}Dc")
-public class {name}DetailView extends StandardDetailView<{name}> {{
-}}
+@ViewDescriptor("{name.lower()}-detail-view.xml")
+@EditedEntityContainer("{name.lower()}Dc")
+public class {java_class_name} extends StandardDetailView<{name}> {{
 """
 
-    view_dir = f"{PROIECT_PATH}/src/main/resources/{company_path}/{project_name}/view/{lower_name}"
-    java_dir = (
-        f"{PROIECT_PATH}/src/main/java/{company_path}/{project_name}/view/{lower_name}"
+    if is_parent_of_composition:
+        java_content += f"""
+    @Autowired
+    private DataContext dataContext;
+    @Autowired
+    private CollectionPropertyContainer<{comp_src_class}> {comp_field_name}Dc;
+
+    @Subscribe
+    public void onInitEntity(final InitEntityEvent<{name}> event) {{
+    }}
+"""
+
+    java_content += "}\n"
+
+    # IO operations for Java saving
+    java_dir = os.path.join(
+        PROIECT_PATH,
+        "src",
+        "main",
+        "java",
+        company_path,
+        project_name,
+        "view",
+        name.lower(),
     )
-    os.makedirs(view_dir, exist_ok=True)
     os.makedirs(java_dir, exist_ok=True)
-
-    with open(f"{view_dir}/{lower_name}-detail-view.xml", "w", encoding="utf-8") as f:
-        f.write(xml_content)
-    with open(f"{java_dir}/{name}DetailView.java", "w", encoding="utf-8") as f:
+    java_file_path = os.path.join(java_dir, f"{java_class_name}.java")
+    with open(java_file_path, "w", encoding="utf-8") as f:
         f.write(java_content)
-    print(f" 🖥️ Detail View successfully generated for: {name}")
 
-    # ============================================================ #
-    # AUTOMATIC INJECT UI TARGET FOR 1:N COMPOSITION RELATIONSHIPS #
-    # ============================================================ #
-    for rel in relations_list:
-        if rel["type"] == "COMPOSITION_1:N":
-            tgt_class = rel["target"]  # ex: User
-            tgt_lower = tgt_class.lower()
-            f_name = rel["field"]  # ex: steps
-            src_class = name  # Re-introduce the variable for parsing entities.csv
-
-            # Path to the parent entity's detailed XML file
-            tgt_xml_path = (
-                PROIECT_PATH
-                + f"/src/main/resources/{company_path}/{project_name}/view/{tgt_lower}/{tgt_lower}-detail-view.xml"
-            )
-
-            if os.path.exists(tgt_xml_path):
-                xml_tgt_content = open(tgt_xml_path, "r", encoding="utf-8").read()
-
-                # Check if the composition table has already been injected
-                if f'id="{f_name}DataGrid"' not in xml_tgt_content:
-                    print(
-                        f" 🖥️ Injectare dinamică @Composition UI în ecranul: {tgt_class} Detail View"
-                    )
-
-                    # 1. Prepare the nested property container
-                    property_container = f'            <collection id="{f_name}Dc" property="{f_name}"/>\n'
-
-                    # Find the area where the parent instance closes and inject before closing
-                    if f'id="{tgt_lower}Dc"' in xml_tgt_content:
-                        xml_tgt_content = xml_tgt_content.replace(
-                            "</instance>", f"{property_container}        </instance>"
-                        )
-
-                    # 2. DYNAMIC COLUMN READING: Collect child properties directly from entities.csv
-                    child_fields = get_entities_from_csv("entities.csv", src_class)
-                    xml_composition_columns = ""
-
-                    if child_fields:
-                        for c_field in child_fields:
-                            xml_composition_columns += f'                <column property="{c_field["name"]}"/>\n'
-                    else:
-                        # Fallback safety if CSV is empty or inaccessible
-                        xml_composition_columns = (
-                            '                <column property="notFound"/>\n'
-                        )
-
-                    # 3. Assemble the <dataGrid> with all dynamically read columns
-                    composition_grid = (
-                        f'        <h3 text="msg://{tgt_lower}DetailView.{f_name}"/>\n'
-                    )
-                    composition_grid += f'        <hbox id="{f_name}ButtonsPanel" classNames="buttons-panel">\n'
-                    composition_grid += f'            <button id="{f_name}CreateBtn" action="{f_name}DataGrid.create"/>\n'
-                    composition_grid += f'            <button id="{f_name}EditBtn" action="{f_name}DataGrid.edit"/>\n'
-                    composition_grid += f'            <button id="{f_name}RemoveBtn" action="{f_name}DataGrid.remove"/>\n'
-                    composition_grid += "        </hbox>\n"
-                    composition_grid += f'        <dataGrid id="{f_name}DataGrid" width="100%" minHeight="15em" dataContainer="{f_name}Dc">\n'
-                    composition_grid += "            <actions>\n"
-                    composition_grid += (
-                        '                <action id="create" type="list_create"/>\n'
-                    )
-                    composition_grid += (
-                        '                <action id="edit" type="list_edit"/>\n'
-                    )
-                    composition_grid += (
-                        '                <action id="remove" type="list_remove"/>\n'
-                    )
-                    composition_grid += "            </actions>\n"
-                    composition_grid += "            <columns>\n"
-                    composition_grid += (
-                        f"{xml_composition_columns}"  # Inject the dynamic block
-                    )
-                    composition_grid += "            </columns>\n"
-                    composition_grid += "        </dataGrid>\n"
-
-                    # Inject the table directly into the layout, immediately below the main form
-                    if "</formLayout>" in xml_tgt_content:
-                        xml_tgt_content = xml_tgt_content.replace(
-                            "</formLayout>", f"</formLayout>\n{composition_grid}"
-                        )
-
-                    # Save the modified XML file back to disk
-                    with open(tgt_xml_path, "w", encoding="utf-8") as f:
-                        f.write(xml_tgt_content)
+    print(
+        f" 🖥️ FlowUI Detail View generation pipeline completed successfully for: {name}!"
+    )
 
 
 # Function to call local ollama to translate text from English to target language
