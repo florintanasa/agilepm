@@ -962,14 +962,24 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     # 1. Base property generation for fetchPlan
     fetch_plan_properties = ""
     for field in fields_list:
-        f_name = field["field_name"].strip()
-        fetch_plan_properties += f'                <property name="{f_name}"/>\n'
+        # UNIVERSAL KEY FIX: Dynamically detect whether the key is 'field' or 'field_name'
+        f_name = field.get(
+            "field", field.get("field_name", field.get("name", ""))
+        ).strip()
+        if f_name:
+            fetch_plan_properties += f'                <property name="{f_name}"/>\n'
 
     # 2. Base form elements generation
     form_components = ""
     for field in fields_list:
-        f_name = field["field_name"].strip()
-        f_type = field["field_type"].strip()
+        # UNIVERSAL KEY FIX: Dynamically detect whether the key is 'field' or 'field_name'
+        f_name = field.get(
+            "field", field.get("field_name", field.get("name", ""))
+        ).strip()
+        if not f_name:
+            continue
+
+        f_type = field.get("field_type", "String").strip()
         label_readable = (
             "".join([" " + c if c.isupper() else c for c in f_name])
             .strip()
@@ -985,9 +995,14 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
 
     # 3. Process relationships mapping variables inside the layout
     for rel in relations_list:
-        r_type = rel["relation_type"].strip().upper()
-        f_name = rel["field"].strip()
-        tgt_entity = rel["target_entity"].strip()
+        # UNIVERSAL KEY FIX: Dynamically handle both raw CSV keys and get_relations_from_csv shorthand keys
+        r_type = rel.get("type", rel.get("relation_type", "")).strip().upper()
+        f_name = rel.get("field", rel.get("field_name", "")).strip()
+        tgt_entity = rel.get("target", rel.get("target_entity", "")).strip()
+
+        if not r_type or not f_name or not tgt_entity:
+            continue
+
         label_readable = (
             "".join([" " + c if c.isupper() else c for c in f_name])
             .strip()
@@ -2386,11 +2401,15 @@ if __name__ == "__main__":
                     inject_list_ui_into_existing_user(relations_list)
                     inject_detail_ui_into_existing_user(relations_list)
             else:
-                fields_list = get_entities_from_csv("entities.csv", ent)
+                # Dynamically fetch ONLY the clean, specific rows for the current entity
+                # This guarantees the dictionary contains the correct keys ('field_name', etc.)
+                current_fields = get_entities_from_csv("entities.csv", ent)
                 relations_list = get_relations_from_csv("relations.csv", ent)
-                if fields_list:
-                    gen_list_view_from_csv(ent, fields_list, relations_list)
-                    gen_detail_view_from_csv(ent, fields_list, relations_list)
+
+                if current_fields:
+                    gen_list_view_from_csv(ent, current_fields, relations_list)
+                    # Passing current_fields instead of the corrupted global fields_list variable
+                    gen_detail_view_from_csv(ent, current_fields, relations_list)
                     update_menu(ent)
 
         # ======================================================================
