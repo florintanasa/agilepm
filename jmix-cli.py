@@ -1053,7 +1053,8 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
       title="msg://{name.lower()}DetailView.title"
       focusComponent="form">
     <data>
-
+   	<instance id="{name.lower()}Dc"
+                 class="{COMPANY}.{project_name}.entity.{name}">
             <fetchPlan extends="_base">
 {fetch_plan_properties}            </fetchPlan>
             <loader id="{name.lower()}Dl"/>
