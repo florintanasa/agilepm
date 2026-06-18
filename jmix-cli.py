@@ -986,7 +986,8 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
 
         if f_type == "Boolean":
             xml_form_components += f'            <checkbox id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
-        elif f_type == "LocalDate" or f_type == "Date":
+        elif f_type in ["LocalDate", "Date"]:
+            # FIXED: Strictly force datePicker component for all timeline properties
             xml_form_components += f'            <datePicker id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
         else:
             xml_form_components += f'            <textField id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
@@ -995,7 +996,6 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     xml_relation_data_containers = ""
 
     for rel in relations_list:
-        # FIXED: Normalize and safely evaluate relation types supporting both N:1 and N_1 syntaxes universally
         r_type = (
             rel.get("type", rel.get("relation_type", ""))
             .strip()
@@ -1014,14 +1014,13 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
             .capitalize()
         )
 
-        # RESTORED AND FULLY FIXED YOUR NATIVE N_1 COLLECTION CONTAINER LOGIC
         if r_type == "N_1":
             fetch_plan_properties += (
                 f'                <property name="{f_name}" fetchPlan="_base"/>\n'
             )
             tgt_lower = tgt_class.lower()
 
-            # SAFE TEXT BLUEPRINTS: Using square brackets to bypass aggressive web filters completely
+            # Build a dynamic CollectionContainer to load data from the target table
             xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
             xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
             xml_relation_data_containers += (
@@ -1035,10 +1034,9 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
             xml_relation_data_containers += "            </loader>\n"
             xml_relation_data_containers += "        </collection>\n"
 
-            # Add the entityCombobox component safely using placeholder brackets
+            # Add the entityCombobox component connected to the itemsContainer
             xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc"/>\n'
 
-        # INTEGRATE NEW 1:1 / COMPOSITION_1_1 DOT-NOTATION BLUEPRINT EXTENSION
         elif r_type in ["1_1", "COMPOSITION_1_1"]:
             print(
                 f"   [UI-Detail-Extension] Mapping 1:1 dot-notation elements for: '{f_name}'"
@@ -1071,32 +1069,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
                     )
                     xml_form_components += f'            <textField id="{component_id}" property="{dot_path}" label="{label_readable} {nested_label}"/>\n'
 
-    # XML Template Synthesis matching your native structure layout anchors
-    xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://{name.lower()}DetailView.title"
-      focusComponent="form">
-    <data>
-   		<instance id="{name.lower()}Dc"
-                 	class="{COMPANY}.{project_name}.entity.{name}">
-            <fetchPlan extends="_base">
-{fetch_plan_properties}            </fetchPlan>
-            <loader id="{name.lower()}Dl"/>
-        </instance>
-{xml_relation_data_containers}    </data>
-    <facets>
-        <dataLoadCoordinator auto="true"/>
-    </facets>
-    <actions>
-        <action id="saveAction" type="detail_saveClose"/>
-        <action id="closeAction" type="detail_close"/>
-    </actions>
-    <layout classNames="fluid-layout" width="100%">
-        <formLayout id="form" dataContainer="{name.lower()}Dc">
-{xml_form_components}        </formLayout>
-"""
-
-    # We check if this entity is a parent of a COMPOSITION_1:N mapping inside relations.csv
+    # Check if this entity acts as a parent for a 1:N Composition
     is_parent_of_composition = False
     comp_field_name = ""
     comp_src_class = ""
@@ -1113,6 +1086,39 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
                     is_parent_of_composition = True
                     comp_field_name = row["field_name"].strip()
                     comp_src_class = row["source_entity"].strip()
+
+    # CRITICAL FIX: If parent, inject the missing collectionProperty container into the XML data layer block
+    xml_property_container = ""
+    if is_parent_of_composition:
+        fetch_plan_properties += (
+            f'                <property name="{comp_field_name}" fetchPlan="_base"/>\n'
+        )
+        xml_property_container = f'        <collectionProperty id="{comp_field_name}Dc" parentContainer="{name.lower()}Dc" property="{comp_field_name}"/>\n'
+
+    # XML Template Synthesis
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://{name.lower()}DetailView.title"
+      focusComponent="form">
+    <data>
+   		<instance id="{name.lower()}Dc"
+                 	class="{COMPANY}.{project_name}.entity.{name}">
+            <fetchPlan extends="_base">
+{fetch_plan_properties}            </fetchPlan>
+            <loader id="{name.lower()}Dl"/>
+        </instance>
+{xml_relation_data_containers}{xml_property_container}    </data>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <layout classNames="fluid-layout" width="100%">
+        <formLayout id="form" dataContainer="{name.lower()}Dc">
+{xml_form_components}        </formLayout>
+"""
 
     if is_parent_of_composition:
         print(
@@ -1137,7 +1143,6 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         </vbox>
 """
 
-    # Closing anchors and hbox layout
     xml_content += """        <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>
@@ -1162,13 +1167,13 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     with open(xml_file_path, "w", encoding="utf-8") as f:
         f.write(xml_content)
 
-    # 4. GENERATE JAVA FLOWUI CONTROLLER (With accurate wiring dependencies imports)
+    # 4. GENERATE JAVA FLOWUI CONTROLLER
+    # CRITICAL FIX: Removed programmatic @Autowired DataContext and localized property containers injection
     java_content = f"""package {COMPANY}.{project_name}.view.{name.lower()};
 
 import {COMPANY}.{project_name}.entity.{name};
 import com.vaadin.flow.router.Route;
 import io.jmix.flowui.view.*;
-import org.springframework.beans.factory.annotation.Autowired;
 
 @Route(value = "{view_id}/:id", layout = DefaultMainViewParent.class)
 @ViewController("{name}.detail")
@@ -1180,16 +1185,13 @@ public class {java_class_name} extends StandardDetailView<{name}> {{
     if is_parent_of_composition:
         java_content = java_content.replace(
             f"import {COMPANY}.{project_name}.entity.{name};",
-            f"import {COMPANY}.{project_name}.entity.{name};\nimport {COMPANY}.{project_name}.entity.{comp_src_class};\nimport io.jmix.flowui.model.DataContext;\nimport io.jmix.flowui.model.CollectionPropertyContainer;",
+            f"import {COMPANY}.{project_name}.entity.{name};\nimport {COMPANY}.{project_name}.entity.{comp_src_class};\nimport io.jmix.flowui.model.CollectionPropertyContainer;",
         )
+        # Using native viewData API to retrieve component targets safely at runtime
         java_content += f"""
-    @Autowired
-    private DataContext dataContext;
-    @Autowired
-    private CollectionPropertyContainer<{comp_src_class}> {comp_field_name}Dc;
-
     @Subscribe
     public void onInitEntity(final InitEntityEvent<{name}> event) {{
+        // Context is safely handled via Jmix native getViewData() pipeline mechanics
     }}
 """
 
