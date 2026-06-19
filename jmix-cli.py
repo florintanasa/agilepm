@@ -856,7 +856,7 @@ def gen_list_view_from_csv(name, fields_list, relations_list=[]):
     xml_columns = ""
     for field in fields_list:
         f_name = field["name"]  # Get the field name from the 'fields_list'
-        xml_columns += f'            <column property="{f_name}"/>\n'  # Add a <column> element with the field name as the property
+        xml_columns += f'                <column property="{f_name}"/>\n'  # Add a <column> element with the field name as the property
 
     # 2. Dynamically generate the Fetch Plan and columns for relationships
     xml_fetch_plan_properties = (
@@ -873,7 +873,7 @@ def gen_list_view_from_csv(name, fields_list, relations_list=[]):
 
             # Add the column to the table using the dot notation (property.instanceNameField)
             # In Jmix, if is directly set property="step", it will automatically call the field marked with @InstanceName from that entity!
-            xml_columns += f'            <column property="{f_name}"/>\n'
+            xml_columns += f'                <column property="{f_name}"/>\n'
 
     # Construct the Fetch Plan block only if relationships are defined
     xml_fetch_plan_block = ""
@@ -881,6 +881,8 @@ def gen_list_view_from_csv(name, fields_list, relations_list=[]):
     if xml_fetch_plan_properties:
         xml_fetch_plan_block = f"""            <fetchPlan extends="_base">
 {xml_fetch_plan_properties}            </fetchPlan>"""
+    else:
+        xml_fetch_plan_block = '            <fetchPlan extends="_base"/>'
 
     # 3. XML FlowUI Structure for a Fully Functional List
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -889,7 +891,8 @@ def gen_list_view_from_csv(name, fields_list, relations_list=[]):
       title="msg://{lower_name}ListView.title"
       focusComponent="{lower_name}sDataGrid">
     <data readOnly="true">
-        <collection id="{lower_name}sDc" class="{COMPANY}.{project_name}.entity.{name}">
+        <collection id="{lower_name}sDc"
+        			class="{COMPANY}.{project_name}.entity.{name}">
 {xml_fetch_plan_block}
             <loader id="{lower_name}sDl" readOnly="true">
                 <query>
@@ -900,22 +903,48 @@ def gen_list_view_from_csv(name, fields_list, relations_list=[]):
     </data>
     <facets>
         <dataLoadCoordinator auto="true"/>
+        <urlQueryParameters>
+            <genericFilter component="genericFilter"/>
+            <pagination component="pagination"/>
+        </urlQueryParameters>
     </facets>
+    <actions>
+        <action id="selectAction" type="lookup_select"/>
+        <action id="discardAction" type="lookup_discard"/>
+    </actions>
     <layout>
+    	<genericFilter id="genericFilter"
+                       dataLoader="{lower_name}sDl">
+                   <properties include=".*"/>
+        </genericFilter>
         <hbox id="buttonsPanel" classNames="buttons-panel">
-            <button id="createBtn" action="{lower_name}sDataGrid.create"/>
-            <button id="editBtn" action="{lower_name}sDataGrid.edit"/>
-            <button id="removeBtn" action="{lower_name}sDataGrid.remove"/>
+        	<startSlot>
+            	<button id="createBtn" action="{lower_name}sDataGrid.createAction"/>
+             	<button id="editBtn" action="{lower_name}sDataGrid.editAction"/>
+              	<button id="removeBtn" action="{lower_name}sDataGrid.removeAction"/>
+            </startSlot>
+            <endSlot>
+                <simplePagination id="pagination" dataLoader="{lower_name}sDl"/>
+                <gridColumnVisibility dataGrid="{lower_name}sDataGrid" icon="COG" themeNames="icon"/>
+            </endSlot>
         </hbox>
-        <dataGrid id="{lower_name}sDataGrid" width="100%" minHeight="20em" dataContainer="{lower_name}sDc">
+        <dataGrid id="{lower_name}sDataGrid"
+        		  width="100%" minHeight="20em"
+           		  dataContainer="{lower_name}sDc"
+               	  columnReorderingAllowed="true"
+                  multiSortOnShiftClickOnly="true">
             <actions>
-                <action id="create" type="list_create"/>
-                <action id="edit" type="list_edit"/>
-                <action id="remove" type="list_remove"/>
+                <action id="createAction" type="list_create"/>
+                <action id="editAction" type="list_edit"/>
+                <action id="removeAction" type="list_remove"/>
             </actions>
-            <columns>
+            <columns resizable="true">
 {xml_columns}            </columns>
         </dataGrid>
+        <hbox id="lookupActions" visible="false">
+            <button id="selectButton" action="selectAction"/>
+            <button id="discardButton" action="discardAction"/>
+        </hbox>
     </layout>
 </view>
 """
@@ -1117,6 +1146,10 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     </actions>
     <layout classNames="fluid-layout" width="100%">
         <formLayout id="form" dataContainer="{name.lower()}Dc">
+       		<responsiveSteps>
+         		<responsiveStep minWidth="0" columns="1"/>
+        		<responsiveStep minWidth="40em" columns="2"/>
+        	</responsiveSteps>
 {xml_form_components}        </formLayout>
 """
 
