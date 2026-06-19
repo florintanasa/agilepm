@@ -1116,13 +1116,13 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
                     comp_field_name = row["field_name"].strip()
                     comp_src_class = row["source_entity"].strip()
 
-    # CRITICAL FIX: If parent, inject the missing collectionProperty container into the XML data layer block
+    # CRITICAL FIX: If parent, inject the missing collection container into the XML data layer block
     xml_property_container = ""
     if is_parent_of_composition:
         fetch_plan_properties += (
             f'                <property name="{comp_field_name}" fetchPlan="_base"/>\n'
         )
-        xml_property_container = f'        <collectionProperty id="{comp_field_name}Dc" parentContainer="{name.lower()}Dc" property="{comp_field_name}"/>\n'
+        xml_property_container = f'        <collection id="{comp_field_name}Dc" property="{comp_field_name}"/>\n'
 
     # XML Template Synthesis
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -1170,7 +1170,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
                     <action id="remove" type="list_remove"/>
                 </actions>
                 <columns resizable="true">
-                    <column property="id"/>
+                	<column property="{comp_field_name}"/>
                 </columns>
             </dataGrid>
         </vbox>
