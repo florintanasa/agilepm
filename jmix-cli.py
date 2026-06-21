@@ -1016,7 +1016,6 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         if f_type == "Boolean":
             xml_form_components += f'            <checkbox id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
         elif f_type in ["LocalDate", "Date"]:
-            # FIXED: Strictly force datePicker component for all timeline properties
             xml_form_components += f'            <datePicker id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
         else:
             xml_form_components += f'            <textField id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
@@ -1122,7 +1121,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         fetch_plan_properties += (
             f'                <property name="{comp_field_name}" fetchPlan="_base"/>\n'
         )
-        xml_property_container = f'        <collection id="{comp_field_name}Dc" property="{comp_field_name}"/>\n'
+        xml_property_container = f'            <collection id="{comp_field_name}Dc" property="{comp_field_name}"/>'
 
     # XML Template Synthesis
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -1135,8 +1134,9 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
             <fetchPlan extends="_base">
 {fetch_plan_properties}            </fetchPlan>
             <loader id="{name.lower()}Dl"/>
+{xml_property_container}
         </instance>
-{xml_relation_data_containers}{xml_property_container}    </data>
+{xml_relation_data_containers}   </data>
     <facets>
         <dataLoadCoordinator auto="true"/>
     </facets>
