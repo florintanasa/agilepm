@@ -1111,7 +1111,7 @@ public class {name}DetailView extends StandardDetailView<{name}> {{
                 # Check if the composition table has already been injected
                 if f'id="{f_name}DataGrid"' not in xml_tgt_content:
                     print(
-                        f" 🖥️ Injectare dinamică @Composition UI în ecranul: {tgt_class} Detail View"
+                        f" 🖥️ Dynamic injecting @Composition UI in: {tgt_class} Detail View"
                     )
 
                     # 1. Prepare the nested property container
