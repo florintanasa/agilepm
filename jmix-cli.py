@@ -984,68 +984,33 @@ public class {name}ListView extends StandardListView<{name}> {{
 # Function to generate the detail-view screen
 def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     print(f" 🖥️ Starting FlowUI Detail View architecture for entity: '{name}'")
+    lower_name = name.lower()
 
-    view_id = f"{name.lower()}-detail-view"
-    java_class_name = f"{name}DetailView"
-
-    # 1. Base property generation for fetchPlan
-    fetch_plan_properties = ""
-    for field in fields_list:
-        f_name = field.get(
-            "field", field.get("field_name", field.get("name", ""))
-        ).strip()
-        if f_name:
-            fetch_plan_properties += f'                <property name="{f_name}"/>\n'
-
-    # 2. Base form elements generation (xml_form_components)
+    # 1. Generate the form components dynamically
     xml_form_components = ""
     for field in fields_list:
-        f_name = field.get(
-            "field", field.get("field_name", field.get("name", ""))
-        ).strip()
-        if not f_name:
-            continue
+        f_name = field["name"]
+        f_type = field["type"].lower()
 
-        f_type = field.get("field_type", "String").strip()
-        label_readable = (
-            "".join([" " + c if c.isupper() else c for c in f_name])
-            .strip()
-            .capitalize()
-        )
-
-        if f_type == "Boolean":
-            xml_form_components += f'            <checkbox id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
-        elif f_type in ["LocalDate", "Date"]:
-            xml_form_components += f'            <datePicker id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
-        else:
-            xml_form_components += f'            <textField id="{f_name}Field" property="{f_name}" label="{label_readable}"/>\n'
-
-    # 3. Process relationships and build intelligent entityComboBox / 1:1 structures
-    xml_relation_data_containers = ""
-
-    for rel in relations_list:
-        r_type = (
-            rel.get("type", rel.get("relation_type", ""))
-            .strip()
-            .upper()
-            .replace(":", "_")
-        )
-        f_name = rel.get("field", rel.get("field_name", "")).strip()
-        tgt_class = rel.get("target", rel.get("target_entity", "")).strip()
-
-        if not r_type or not f_name or not tgt_class:
-            continue
-
-        label_readable = (
-            "".join([" " + c if c.isupper() else c for c in f_name])
-            .strip()
-            .capitalize()
-        )
-
-        if r_type == "N_1":
-            fetch_plan_properties += (
-                f'                <property name="{f_name}" fetchPlan="_base"/>\n'
+        if f_type in ["boolean", "bool"]:
+            xml_form_components += (
+                f'            <checkbox id="{f_name}Field" property="{f_name}"/>\n'
             )
+        elif f_type in ["date", "localdate", "datetime", "localdatetime"]:
+            xml_form_components += (
+                f'            <datePicker id="{f_name}Field" property="{f_name}"/>\n'
+            )
+        else:
+            xml_form_components += (
+                f'            <textField id="{f_name}Field" property="{f_name}"/>\n'
+            )
+
+    # 2. Add the intelligent entityComboBox component for N:1 relationships
+    xml_relation_data_containers = ""
+    for rel in relations_list:
+        if rel["type"] == "N:1":
+            f_name = rel["field"]  # ex: step, user
+            tgt_class = rel["target"]  # ex: Step, User_
             tgt_lower = tgt_class.lower()
 
             # Build a dynamic CollectionContainer to load data from the target table
@@ -1065,78 +1030,18 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
             # Add the entityCombobox component connected to the itemsContainer
             xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc"/>\n'
 
-        elif r_type in ["1_1", "COMPOSITION_1_1"]:
-            print(
-                f"   [UI-Detail-Extension] Mapping 1:1 dot-notation elements for: '{f_name}'"
-            )
-            fetch_plan_properties += (
-                f'                <property name="{f_name}" fetchPlan="_base"/>\n'
-            )
-
-            if tgt_class == "User":
-                xml_form_components += f'            <textField id="{f_name}UsernameField" property="{f_name}.username" label="{label_readable} Username"/>\n'
-                xml_form_components += f'            <textField id="{f_name}FirstNameField" property="{f_name}.firstName" label="{label_readable} First Name"/>\n'
-            else:
-                nested_attributes = []
-                if os.path.exists("entities.csv"):
-                    with open("entities.csv", mode="r", encoding="utf-8") as f_csv:
-                        reader = csv.DictReader(f_csv)
-                        for row in reader:
-                            if row["entity_name"].strip() == tgt_class:
-                                nested_attributes.append(row["field_name"].strip())
-                if not nested_attributes:
-                    nested_attributes = ["name"]
-
-                for n_attr in nested_attributes:
-                    dot_path = f"{f_name}.{n_attr}"
-                    component_id = f"{f_name}{n_attr.capitalize()}Field"
-                    nested_label = (
-                        "".join([" " + c if c.isupper() else c for c in n_attr])
-                        .strip()
-                        .capitalize()
-                    )
-                    xml_form_components += f'            <textField id="{component_id}" property="{dot_path}" label="{label_readable} {nested_label}"/>\n'
-
-    # Check if this entity acts as a parent for a 1:N Composition
-    is_parent_of_composition = False
-    comp_field_name = ""
-    comp_src_class = ""
-
-    if os.path.exists("relations.csv"):
-        with open("relations.csv", mode="r", encoding="utf-8") as f_rel:
-            reader = csv.DictReader(f_rel)
-            for row in reader:
-                current_r_type = row["relation_type"].strip().upper().replace(":", "_")
-                if (
-                    row["target_entity"].strip() == name
-                    and current_r_type == "COMPOSITION_1_N"
-                ):
-                    is_parent_of_composition = True
-                    comp_field_name = row["field_name"].strip()
-                    comp_src_class = row["source_entity"].strip()
-
-    # CRITICAL FIX: If parent, inject the missing collection container into the XML data layer block
-    xml_property_container = ""
-    if is_parent_of_composition:
-        fetch_plan_properties += (
-            f'                <property name="{comp_field_name}" fetchPlan="_base"/>\n'
-        )
-        xml_property_container = f'            <collection id="{comp_field_name}Dc" property="{comp_field_name}"/>'
-
-    # XML Template Synthesis
+    # 2. XML FlowUI Structure for detail-view
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      title="msg://{name.lower()}DetailView.title"
+      title="msg://{lower_name}DetailView.title"
       focusComponent="form">
     <data>
-   		<instance id="{name.lower()}Dc"
-                 	class="{COMPANY}.{project_name}.entity.{name}">
-            <fetchPlan extends="_base">
-{fetch_plan_properties}            </fetchPlan>
-            <loader id="{name.lower()}Dl"/>
-{xml_property_container}
+    	<instance id="{lower_name}Dc"
+                  class="{COMPANY}.{project_name}.entity.{name}">
+            <fetchPlan extends="_base"/>
+            <loader id="{lower_name}Dl"/>
         </instance>
-{xml_relation_data_containers}   </data>
+{xml_relation_data_containers}    </data>
     <facets>
         <dataLoadCoordinator auto="true"/>
     </facets>
@@ -1145,38 +1050,9 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
         <action id="closeAction" type="detail_close"/>
     </actions>
     <layout classNames="fluid-layout" width="100%">
-        <formLayout id="form" dataContainer="{name.lower()}Dc">
-       		<responsiveSteps>
-         		<responsiveStep minWidth="0" columns="1"/>
-        		<responsiveStep minWidth="40em" columns="2"/>
-        	</responsiveSteps>
+        <formLayout id="form" dataContainer="{lower_name}Dc">
 {xml_form_components}        </formLayout>
-"""
-
-    if is_parent_of_composition:
-        print(
-            f" 🖥️ Injecting 1:N Composition UI Layout constraints for property: {comp_field_name}"
-        )
-        xml_content += f"""        <vbox id="compositionBox" width="100%" height="100%">
-            <hbox id="buttonsPanel" classNames="buttons-panel">
-                <button id="createBtn" action="compositionDataGrid.create"/>
-                <button id="editBtn" action="compositionDataGrid.edit"/>
-                <button id="removeBtn" action="compositionDataGrid.remove"/>
-            </hbox>
-            <dataGrid id="compositionDataGrid" dataContainer="{comp_field_name}Dc" width="100%" minHeight="20em">
-                <actions>
-                    <action id="create" type="list_create"/>
-                    <action id="edit" type="list_edit"/>
-                    <action id="remove" type="list_remove"/>
-                </actions>
-                <columns resizable="true">
-                	<column property="{comp_field_name}"/>
-                </columns>
-            </dataGrid>
-        </vbox>
-"""
-
-    xml_content += """        <hbox id="detailActions">
+        <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>
         </hbox>
@@ -1184,71 +1060,119 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
 </view>
 """
 
-    # IO operations for XML saving
-    xml_dir = os.path.join(
-        PROIECT_PATH,
-        "src",
-        "main",
-        "resources",
-        company_path,
-        project_name,
-        "view",
-        name.lower(),
-    )
-    os.makedirs(xml_dir, exist_ok=True)
-    xml_file_path = os.path.join(xml_dir, f"{name.lower()}-detail-view.xml")
-    with open(xml_file_path, "w", encoding="utf-8") as f:
-        f.write(xml_content)
-
-    # 4. GENERATE JAVA FLOWUI CONTROLLER
-    # CRITICAL FIX: Removed programmatic @Autowired DataContext and localized property containers injection
-    java_content = f"""package {COMPANY}.{project_name}.view.{name.lower()};
+    # 3. Java Controller Structure for detail-view
+    java_content = f"""package {COMPANY}.{project_name}.view.{lower_name};
 
 import {COMPANY}.{project_name}.entity.{name};
+import {COMPANY}.{project_name}.view.main.MainView;
 import com.vaadin.flow.router.Route;
 import io.jmix.flowui.view.*;
 
-@Route(value = "{view_id}/:id", layout = DefaultMainViewParent.class)
+@Route(value = "{lower_name}s/:id", layout = MainView.class)
 @ViewController("{name}.detail")
-@ViewDescriptor("{name.lower()}-detail-view.xml")
-@EditedEntityContainer("{name.lower()}Dc")
-public class {java_class_name} extends StandardDetailView<{name}> {{
+@ViewDescriptor("{lower_name}-detail-view.xml")
+@EditedEntityContainer("{lower_name}Dc")
+public class {name}DetailView extends StandardDetailView<{name}> {{
+}}
 """
 
-    if is_parent_of_composition:
-        java_content = java_content.replace(
-            f"import {COMPANY}.{project_name}.entity.{name};",
-            f"import {COMPANY}.{project_name}.entity.{name};\nimport {COMPANY}.{project_name}.entity.{comp_src_class};\nimport io.jmix.flowui.model.CollectionPropertyContainer;",
-        )
-        # Using native viewData API to retrieve component targets safely at runtime
-        java_content += f"""
-    @Subscribe
-    public void onInitEntity(final InitEntityEvent<{name}> event) {{
-        // Context is safely handled via Jmix native getViewData() pipeline mechanics
-    }}
-"""
-
-    java_content += "}\n"
-
-    # IO operations for Java saving
-    java_dir = os.path.join(
-        PROIECT_PATH,
-        "src",
-        "main",
-        "java",
-        company_path,
-        project_name,
-        "view",
-        name.lower(),
+    view_dir = f"{PROIECT_PATH}/src/main/resources/{company_path}/{project_name}/view/{lower_name}"
+    java_dir = (
+        f"{PROIECT_PATH}/src/main/java/{company_path}/{project_name}/view/{lower_name}"
     )
+    os.makedirs(view_dir, exist_ok=True)
     os.makedirs(java_dir, exist_ok=True)
-    java_file_path = os.path.join(java_dir, f"{java_class_name}.java")
-    with open(java_file_path, "w", encoding="utf-8") as f:
-        f.write(java_content)
 
-    print(
-        f" 🖥️ FlowUI Detail View generation pipeline completed successfully for: {name}!"
-    )
+    with open(f"{view_dir}/{lower_name}-detail-view.xml", "w", encoding="utf-8") as f:
+        f.write(xml_content)
+    with open(f"{java_dir}/{name}DetailView.java", "w", encoding="utf-8") as f:
+        f.write(java_content)
+    print(f" 🖥️ Detail View successfully generated for: {name}")
+
+    # ============================================================ #
+    # AUTOMATIC INJECT UI TARGET FOR 1:N COMPOSITION RELATIONSHIPS #
+    # ============================================================ #
+    for rel in relations_list:
+        if rel["type"] == "COMPOSITION_1:N":
+            tgt_class = rel["target"]  # ex: User
+            tgt_lower = tgt_class.lower()
+            f_name = rel["field"]  # ex: steps
+            src_class = name  # Re-introduce the variable for parsing entities.csv
+
+            # Path to the parent entity's detailed XML file
+            tgt_xml_path = (
+                PROIECT_PATH
+                + f"/src/main/resources/{company_path}/{project_name}/view/{tgt_lower}/{tgt_lower}-detail-view.xml"
+            )
+
+            if os.path.exists(tgt_xml_path):
+                xml_tgt_content = open(tgt_xml_path, "r", encoding="utf-8").read()
+
+                # Check if the composition table has already been injected
+                if f'id="{f_name}DataGrid"' not in xml_tgt_content:
+                    print(
+                        f" 🖥️ Injectare dinamică @Composition UI în ecranul: {tgt_class} Detail View"
+                    )
+
+                    # 1. Prepare the nested property container
+                    property_container = f'            <collection id="{f_name}Dc" property="{f_name}"/>\n'
+
+                    # Find the area where the parent instance closes and inject before closing
+                    if f'id="{tgt_lower}Dc"' in xml_tgt_content:
+                        xml_tgt_content = xml_tgt_content.replace(
+                            "</instance>", f"{property_container}        </instance>"
+                        )
+
+                    # 2. DYNAMIC COLUMN READING: Collect child properties directly from entities.csv
+                    child_fields = get_entities_from_csv("entities.csv", src_class)
+                    xml_composition_columns = ""
+
+                    if child_fields:
+                        for c_field in child_fields:
+                            xml_composition_columns += f'                <column property="{c_field["name"]}"/>\n'
+                    else:
+                        # Fallback safety if CSV is empty or inaccessible
+                        xml_composition_columns = (
+                            '                <column property="notFound"/>\n'
+                        )
+
+                    # 3. Assemble the <dataGrid> with all dynamically read columns
+                    composition_grid = (
+                        f'        <h3 text="msg://{tgt_lower}DetailView.{f_name}"/>\n'
+                    )
+                    composition_grid += f'        <hbox id="{f_name}ButtonsPanel" classNames="buttons-panel">\n'
+                    composition_grid += f'            <button id="{f_name}CreateBtn" action="{f_name}DataGrid.create"/>\n'
+                    composition_grid += f'            <button id="{f_name}EditBtn" action="{f_name}DataGrid.edit"/>\n'
+                    composition_grid += f'            <button id="{f_name}RemoveBtn" action="{f_name}DataGrid.remove"/>\n'
+                    composition_grid += "        </hbox>\n"
+                    composition_grid += f'        <dataGrid id="{f_name}DataGrid" width="100%" minHeight="15em" dataContainer="{f_name}Dc">\n'
+                    composition_grid += "            <actions>\n"
+                    composition_grid += (
+                        '                <action id="create" type="list_create"/>\n'
+                    )
+                    composition_grid += (
+                        '                <action id="edit" type="list_edit"/>\n'
+                    )
+                    composition_grid += (
+                        '                <action id="remove" type="list_remove"/>\n'
+                    )
+                    composition_grid += "            </actions>\n"
+                    composition_grid += "            <columns>\n"
+                    composition_grid += (
+                        f"{xml_composition_columns}"  # Inject the dynamic block
+                    )
+                    composition_grid += "            </columns>\n"
+                    composition_grid += "        </dataGrid>\n"
+
+                    # Inject the table directly into the layout, immediately below the main form
+                    if "</formLayout>" in xml_tgt_content:
+                        xml_tgt_content = xml_tgt_content.replace(
+                            "</formLayout>", f"</formLayout>\n{composition_grid}"
+                        )
+
+                    # Save the modified XML file back to disk
+                    with open(tgt_xml_path, "w", encoding="utf-8") as f:
+                        f.write(xml_tgt_content)
 
 
 # Function to call local ollama to translate text from English to target language
