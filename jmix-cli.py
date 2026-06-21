@@ -1809,7 +1809,7 @@ def inject_relations_into_existing_user(relations_list):
 
             # Prevent property duplication
             if f"private {tgt_class} {f_name};" not in content:
-                print(f"   -> Injectare proprietate @ManyToOne '{f_name}' în User.java")
+                print(f"   -> Injectin property @ManyToOne '{f_name}' in User.java")
 
                 # Build the annotations and the Java field
                 sql_col = f"{f_name.upper()}_ID"
