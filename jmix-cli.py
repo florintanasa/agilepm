@@ -2143,11 +2143,6 @@ def get_sorted_entities_by_dependency():
             if name:
                 all_entities.add(name)
 
-    # Jmix system entities tracking fallback
-    if "User" not in all_entities and os.path.exists("relations.csv"):
-        # If User is used as a relation target but not defined in entities, add it
-        all_entities.add("User")
-
     # 2. Build dependency tracker (who needs to be created before whom)
     dependencies = {ent: set() for ent in all_entities}
 
@@ -2194,6 +2189,11 @@ def get_sorted_entities_by_dependency():
     for entity in sorted(list(all_entities)):
         if entity not in visited:
             visit(entity)
+
+    # Jmix system entities tracking fallback
+    if "User" not in all_entities and os.path.exists("relations.csv"):
+        # If User is used as a relation target but not defined in entities, add it
+        sorted_entities.append("User")
 
     return sorted_entities
 
