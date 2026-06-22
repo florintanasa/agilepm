@@ -468,7 +468,7 @@ public class {name} {{
 
                     # --- CASE A: 1:N Composition ---
                     if r_type == "COMPOSITION_1:N":
-                        # FIX PROTECTIE: Izolăm strict doar primul caracter la conversia în litere mici!
+                        # FIX PROTECTION: We strictly isolate only the first character when converting to lowercase!
                         first_char_lower = tgt_class[0].lower()
                         remaining_chars = tgt_class[1:]
                         mapped_by_prop = first_char_lower + remaining_chars
@@ -782,7 +782,7 @@ def gen_liquibase_relations_changelog(name, relations_list):
                 <constraints nullable="{nullable_val}"/>
             </column>
         </addColumn>
-        <!-- Garantăm unicitatea la nivel SQL pentru 1:1 prin crearea unui Index UNIQUE -->
+        <!-- Guarantee uniqueness at the SQL level for 1:1 by creating a UNIQUE Index-->
         <createIndex tableName="{src_table}" indexName="IDX_{src_table}_UNQ_{col_name}" unique="true">
             <column name="{col_name}"/>
         </createIndex>
