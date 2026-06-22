@@ -852,7 +852,7 @@ def gen_liquibase_relations_changelog(name, relations_list):
 def gen_list_view_from_csv(name, fields_list, relations_list=[]):
     lower_name = name.lower()  # Convert the input 'name' to lowercase
 
-    # 1. Generăm coloanele simple din entities.csv
+    # 1. Generate the simple columns from entities.csv
     xml_columns = ""
     for field in fields_list:
         f_name = field["name"]  # Get the field name from the 'fields_list'
@@ -863,7 +863,7 @@ def gen_list_view_from_csv(name, fields_list, relations_list=[]):
         ""  # Initialize an empty string to store the Fetch Plan block.
     )
     for rel in relations_list:
-        if rel["type"] == "N:1":
+        if rel["type"] == "N:1" or rel["type"] == "1:1":
             f_name = rel["field"]  # ex: step, user
 
             # Tell the Fetch Plan to load the relationship property with its basic attributes (_base)
@@ -1008,7 +1008,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     # 2. Add the intelligent entityComboBox component for N:1 relationships
     xml_relation_data_containers = ""
     for rel in relations_list:
-        if rel["type"] == "N:1":
+        if rel["type"] == "N:1" or rel["type"] == "1:1":
             f_name = rel["field"]  # ex: step, user
             tgt_class = rel["target"]  # ex: Step, User_
             tgt_lower = tgt_class.lower()
@@ -1028,7 +1028,13 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
             xml_relation_data_containers += "        </collection>\n"
 
             # Add the entityCombobox component connected to the itemsContainer
-            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc"/>\n'
+            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
+            xml_form_components += "                <actions>\n"
+            xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+            xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+            xml_form_components += "                </actions>\n"
+            xml_form_components += "            </entityComboBox>\n"
 
     # 2. XML FlowUI Structure for detail-view
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
