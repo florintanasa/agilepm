@@ -1,0 +1,28 @@
+tools:
+    shell:
+        allow:
+            - ls *
+            - wc *
+            - git diff *
+            - echo *
+            - python3 *
+            - head *
+            - tail *
+            - sleep 15
+            - grep *
+            - ps aux
+            - cat *
+            - sort
+            - git status *
+            - git log *
+            - git checkout d39ba1e *
+            - git stash *
+            - rm *
+            - git checkout *
+            - sleep 20
+            - ./gradlew compileJava
+            - sleep 30
+            - sleep 10
+            - curl *
+            - ./gradlew clean *
+            - sleep 35
