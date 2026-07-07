@@ -26,3 +26,6 @@ tools:
             - curl *
             - ./gradlew clean *
             - sleep 35
+            - pkill *
+            - awk *
+            - xargs *
