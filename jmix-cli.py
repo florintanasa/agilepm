@@ -33,7 +33,7 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Load proiect path in variable PROIECT_PATH
@@ -84,6 +84,17 @@ def to_camel_case_lower(text):
         return ""
     text_clean = text.strip()
     return text_clean[0].lower() + text_clean[1:]
+
+
+def inject_import_if_missing(java_content: str, import_class: str) -> str:
+    """Inject an import statement at the package line if it doesn't already exist."""
+    full_import = f"import {import_class};"
+    if full_import in java_content:
+        return java_content
+    return java_content.replace(
+        f"package {COMPANY}.{project_name}.entity;",
+        f"package {COMPANY}.{project_name}.entity;\n{full_import}"
+    )
 
 
 # Function to read traits from csv file traits.casv
@@ -383,6 +394,51 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
             f_caps = f_name[0].upper() + f_name[1:]
             java_relation_methods += f"    public List<{tgt_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
             java_relation_methods += f"    public void set{f_caps}(List<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+
+            # ===== INJECT INVERSE N:N RELATIONSHIP INTO TARGET ENTITY =====
+            inv_field_name = name.lower() + "s" if not name.endswith("s") else name.lower()
+            tgt_file_path = os.path.join(
+                PROIECT_PATH,
+                "src",
+                "main",
+                "java",
+                company_path,
+                project_name,
+                "entity",
+                f"{tgt_class}.java",
+            )
+            if os.path.exists(tgt_file_path):
+                java_tgt_content = open(tgt_file_path, "r", encoding="utf-8").read()
+
+                if f"private List<{name}> {inv_field_name};" not in java_tgt_content:
+                    print(f" 🔗 Injecting inverse N:N association into the target class: {tgt_class}")
+
+                    inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{name}> {inv_field_name};\n\n'
+
+                    inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
+                    inv_methods = f"    public List<{name}> get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
+                    inv_methods += f"    public void set{inv_caps}(List<{name}> {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
+
+                    java_tgt_content = inject_import_if_missing(java_tgt_content, "jakarta.persistence.ManyToMany")
+                    java_tgt_content = inject_import_if_missing(java_tgt_content, "java.util.List")
+
+                    if "    public UUID getId()" in java_tgt_content:
+                        java_tgt_content = java_tgt_content.replace(
+                            "    public UUID getId()",
+                            f"{inv_field}    public UUID getId()"
+                        )
+
+                    last_brace = java_tgt_content.rfind("}")
+                    if last_brace != -1:
+                        java_tgt_content = (
+                            java_tgt_content[:last_brace]
+                            + "\n"
+                            + inv_methods
+                            + java_tgt_content[last_brace:]
+                        )
+
+                    with open(tgt_file_path, "w", encoding="utf-8") as f:
+                        f.write(java_tgt_content)
 
     # Transform the entire import set into text NOW, after everything is collected
     imports_block = "\n".join(sorted(list(dinamic_imports)))
@@ -769,13 +825,29 @@ def gen_liquibase_relations_changelog(name, relations_list):
 
         # === CASE 2: 1:1 Relationship (OneToOne) ===
         # Add a UUID column + Foreign Key + a UNIQUE constraint to ensure the 1-to-1 link
-        elif rel["type"] == "1:1":
+        # NOTE: COMPOSITION_1:1 also handled here - FK will be added in PHASE 2.5 after target entity exists
+        elif rel["type"] == "1:1" or rel["type"] == "COMPOSITION_1:1":
             f_name = rel["field"].upper()
             col_name = f"{f_name}_ID"
             fk_name = f"FK_{src_table}_ON_{f_name}"
             nullable_val = "false" if rel["mandatory"] else "true"
 
-            xml_fk_content += f"""
+            if rel["type"] == "COMPOSITION_1:1":
+                xml_fk_content += f"""
+    <changeSet id="{timestamp_id}-add-11-{rel["field"].lower()}" author="{project_name}">
+        <addColumn tableName="{src_table}">
+            <column name="{col_name}" type="UUID">
+                <constraints nullable="{nullable_val}"/>
+            </column>
+        </addColumn>
+        <!-- Guarantee uniqueness at the SQL level for 1:1 by creating a UNIQUE Index-->
+        <createIndex tableName="{src_table}" indexName="IDX_{src_table}_UNQ_{col_name}" unique="true">
+            <column name="{col_name}"/>
+        </createIndex>
+        <!-- FK will be added in PHASE 2.5 after target entity table exists -->
+    </changeSet>"""
+            else:
+                xml_fk_content += f"""
     <changeSet id="{timestamp_id}-add-11-{rel["field"].lower()}" author="{project_name}">
         <addColumn tableName="{src_table}">
             <column name="{col_name}" type="UUID">
@@ -2386,6 +2458,100 @@ if __name__ == "__main__":
                     update_messages_entity(
                         ".", COMPANY + "." + PROJECT, ent, computed_traits_list
                     )
+
+        # ======================================================================
+        # PHASE 2.5: FINALIZE COMPOSITION RELATIONSHIPS (post-entity generation)
+        # ======================================================================
+        print("\n[⚡] PHASE 2.5: Finalizing Composition relationships...")
+        if os.path.exists("relations.csv"):
+            with open("relations.csv", mode="r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    r_type = row["relation_type"].strip()
+                    if r_type == "COMPOSITION_1:1":
+                        src_class = row["source_entity"].strip()
+                        tgt_class = row["target_entity"].strip()
+                        f_name = row["field_name"].strip()
+
+                        src_file_path = f"src/main/java/{company_path}/{project_name}/entity/{src_class}.java"
+                        tgt_file_path = f"src/main/java/{company_path}/{project_name}/entity/{tgt_class}.java"
+
+                        if os.path.exists(src_file_path) and os.path.exists(tgt_file_path):
+                            # Inject Composition field into source entity (parent)
+                            with open(src_file_path, "r", encoding="utf-8") as sf:
+                                src_content = sf.read()
+                            if f"private {tgt_class} {f_name};" not in src_content:
+                                print(f" 🔗 Finalizing @Composition 1:1 in {src_class}")
+                                sql_fk_col = f"{f_name.upper()}_ID"
+                                comp_field = f'    @Composition\n    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
+                                comp_caps = f_name[0].upper() + f_name[1:]
+                                comp_methods = f"    public {tgt_class} get{comp_caps}() {{\n        return {f_name};\n    }}\n\n"
+                                comp_methods += f"    public void set{comp_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+
+                                src_content = inject_import_if_missing(src_content, "io.jmix.core.metamodel.annotation.Composition")
+                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.OneToOne")
+                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.JoinColumn")
+                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.FetchType")
+
+                                if "    public UUID getId()" in src_content:
+                                    src_content = src_content.replace("    public UUID getId()", f"{comp_field}    public UUID getId()")
+
+                                last_brace = src_content.rfind("}")
+                                if last_brace != -1:
+                                    src_content = src_content[:last_brace] + "\n" + comp_methods + src_content[last_brace:]
+
+                                with open(src_file_path, "w", encoding="utf-8") as sf:
+                                    sf.write(src_content)
+
+                            # Inject inverse mappedBy in target entity (child)
+                            with open(tgt_file_path, "r", encoding="utf-8") as tf:
+                                tgt_content = tf.read()
+                            inv_field_name = to_camel_case_lower(src_class)
+                            if f"private {src_class} {inv_field_name};" not in tgt_content:
+                                print(f" 🔗 Finalizing inverse 1:1 in {tgt_class}")
+                                inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {src_class} {inv_field_name};\n\n'
+                                inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
+                                inv_methods = f"    public {src_class} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
+                                inv_methods += f"    public void set{inv_caps}({src_class} {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
+
+                                tgt_content = inject_import_if_missing(tgt_content, "jakarta.persistence.OneToOne")
+                                tgt_content = inject_import_if_missing(tgt_content, "jakarta.persistence.FetchType")
+
+                                if "    public UUID getId()" in tgt_content:
+                                    tgt_content = tgt_content.replace("    public UUID getId()", f"{inv_field}    public UUID getId()")
+
+                                last_brace = tgt_content.rfind("}")
+                                if last_brace != -1:
+                                    tgt_content = tgt_content[:last_brace] + "\n" + inv_methods + tgt_content[last_brace:]
+
+                                with open(tgt_file_path, "w", encoding="utf-8") as tf:
+                                    tf.write(tgt_content)
+
+                            # Add FK constraint changelog for Composition 1:1
+                            timestamp_id_fk = datetime.now().strftime("%Y%m%d%H%M%S")
+                            fk_changelog = f"""<?xml version="1.0" encoding="UTF-8" ?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+    objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS"
+>
+    <changeSet id="{timestamp_id_fk}-add-fk-{f_name}" author="{project_name}">
+        <addForeignKeyConstraint baseTableName="{src_class.upper()}"
+                                  baseColumnNames="{f_name.upper()}_ID"
+                                  constraintName="FK_{src_class.upper()}_ON_{f_name}"
+                                  referencedTableName="{tgt_class.upper()}"
+                                  referencedColumnNames="ID"/>
+    </changeSet>
+</databaseChangeLog>
+"""
+                            fk_dir = f"src/main/resources/{company_path}/{project_name}/liquibase/changelog/2026/07"
+                            os.makedirs(fk_dir, exist_ok=True)
+                            fk_file = f"{fk_dir}/{timestamp_id_fk}-03-fk-{src_class.lower()}.xml"
+                            with open(fk_file, "w", encoding="utf-8") as fk_f:
+                                fk_f.write(fk_changelog)
+                            print(f" 🔗 Added FK constraint changelog: {fk_file}")
 
         # ======================================================================
         # PHASE 2: AUTOMATED FLOWUI STRUCTURAL VIEW ARCHITECTURING
