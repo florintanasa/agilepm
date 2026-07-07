@@ -1080,7 +1080,7 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
     # 2. Add the intelligent entityComboBox component for N:1 relationships
     xml_relation_data_containers = ""
     for rel in relations_list:
-        if rel["type"] == "N:1" or rel["type"] == "1:1":
+        if rel["type"] == "N:1" or rel["type"] == "1:1" or rel["type"] == "COMPOSITION_1:1":
             f_name = rel["field"]  # ex: step, user
             tgt_class = rel["target"]  # ex: Step, User_
             tgt_lower = tgt_class.lower()
