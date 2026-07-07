@@ -75,6 +75,7 @@ COMPANY = get_company_name() or ""
 company_path = COMPANY.replace(".", "/")
 
 
+# Function to transform into a camelCase with first letter lowercase
 def to_camel_case_lower(text):
     """
     Transforms any String into a safe camelCase with the first letter strictly lowercase.
@@ -86,6 +87,7 @@ def to_camel_case_lower(text):
     return text_clean[0].lower() + text_clean[1:]
 
 
+# Fucntion to inject import at the package line if it doesn't already exist.
 def inject_import_if_missing(java_content: str, import_class: str) -> str:
     """Inject an import statement at the package line if it doesn't already exist."""
     full_import = f"import {import_class};"
@@ -93,7 +95,7 @@ def inject_import_if_missing(java_content: str, import_class: str) -> str:
         return java_content
     return java_content.replace(
         f"package {COMPANY}.{project_name}.entity;",
-        f"package {COMPANY}.{project_name}.entity;\n{full_import}"
+        f"package {COMPANY}.{project_name}.entity;\n{full_import}",
     )
 
 
@@ -396,7 +398,9 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
             java_relation_methods += f"    public void set{f_caps}(List<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
             # ===== INJECT INVERSE N:N RELATIONSHIP INTO TARGET ENTITY =====
-            inv_field_name = name.lower() + "s" if not name.endswith("s") else name.lower()
+            inv_field_name = (
+                name.lower() + "s" if not name.endswith("s") else name.lower()
+            )
             tgt_file_path = os.path.join(
                 PROIECT_PATH,
                 "src",
@@ -411,7 +415,9 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
                 java_tgt_content = open(tgt_file_path, "r", encoding="utf-8").read()
 
                 if f"private List<{name}> {inv_field_name};" not in java_tgt_content:
-                    print(f" 🔗 Injecting inverse N:N association into the target class: {tgt_class}")
+                    print(
+                        f" 🔗 Injecting inverse N:N association into the target class: {tgt_class}"
+                    )
 
                     inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{name}> {inv_field_name};\n\n'
 
@@ -419,13 +425,17 @@ def gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list=[]):
                     inv_methods = f"    public List<{name}> get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
                     inv_methods += f"    public void set{inv_caps}(List<{name}> {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
 
-                    java_tgt_content = inject_import_if_missing(java_tgt_content, "jakarta.persistence.ManyToMany")
-                    java_tgt_content = inject_import_if_missing(java_tgt_content, "java.util.List")
+                    java_tgt_content = inject_import_if_missing(
+                        java_tgt_content, "jakarta.persistence.ManyToMany"
+                    )
+                    java_tgt_content = inject_import_if_missing(
+                        java_tgt_content, "java.util.List"
+                    )
 
                     if "    public UUID getId()" in java_tgt_content:
                         java_tgt_content = java_tgt_content.replace(
                             "    public UUID getId()",
-                            f"{inv_field}    public UUID getId()"
+                            f"{inv_field}    public UUID getId()",
                         )
 
                     last_brace = java_tgt_content.rfind("}")
@@ -1077,10 +1087,14 @@ def gen_detail_view_from_csv(name, fields_list, relations_list=[]):
                 f'            <textField id="{f_name}Field" property="{f_name}"/>\n'
             )
 
-    # 2. Add the intelligent entityComboBox component for N:1 relationships
+    # 2. Add the intelligent entityComboBox component for N:1, 1:1 and COMPOSITION_1:1 relationships
     xml_relation_data_containers = ""
     for rel in relations_list:
-        if rel["type"] == "N:1" or rel["type"] == "1:1" or rel["type"] == "COMPOSITION_1:1":
+        if (
+            rel["type"] == "N:1"
+            or rel["type"] == "1:1"
+            or rel["type"] == "COMPOSITION_1:1"
+        ):
             f_name = rel["field"]  # ex: step, user
             tgt_class = rel["target"]  # ex: Step, User_
             tgt_lower = tgt_class.lower()
@@ -2197,6 +2211,7 @@ public interface {class_name} {{
     )
 
 
+# Function to sort entities by relations
 def get_sorted_entities_by_dependency():
     """
     Analyzes entities.csv and relations.csv to sort entities topologically.
@@ -2391,7 +2406,9 @@ if __name__ == "__main__":
                         src_file_path = f"src/main/java/{company_path}/{project_name}/entity/{src_class}.java"
                         tgt_file_path = f"src/main/java/{company_path}/{project_name}/entity/{tgt_class}.java"
 
-                        if os.path.exists(src_file_path) and os.path.exists(tgt_file_path):
+                        if os.path.exists(src_file_path) and os.path.exists(
+                            tgt_file_path
+                        ):
                             with open(src_file_path, "r", encoding="utf-8") as sf:
                                 src_content = sf.read()
                             if f"private {tgt_class} {f_name};" not in src_content:
@@ -2402,17 +2419,34 @@ if __name__ == "__main__":
                                 comp_methods = f"    public {tgt_class} get{comp_caps}() {{\n        return {f_name};\n    }}\n\n"
                                 comp_methods += f"    public void set{comp_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
-                                src_content = inject_import_if_missing(src_content, "io.jmix.core.metamodel.annotation.Composition")
-                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.OneToOne")
-                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.JoinColumn")
-                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.FetchType")
+                                src_content = inject_import_if_missing(
+                                    src_content,
+                                    "io.jmix.core.metamodel.annotation.Composition",
+                                )
+                                src_content = inject_import_if_missing(
+                                    src_content, "jakarta.persistence.OneToOne"
+                                )
+                                src_content = inject_import_if_missing(
+                                    src_content, "jakarta.persistence.JoinColumn"
+                                )
+                                src_content = inject_import_if_missing(
+                                    src_content, "jakarta.persistence.FetchType"
+                                )
 
                                 if "    public UUID getId()" in src_content:
-                                    src_content = src_content.replace("    public UUID getId()", f"{comp_field}    public UUID getId()")
+                                    src_content = src_content.replace(
+                                        "    public UUID getId()",
+                                        f"{comp_field}    public UUID getId()",
+                                    )
 
                                 last_brace = src_content.rfind("}")
                                 if last_brace != -1:
-                                    src_content = src_content[:last_brace] + "\n" + comp_methods + src_content[last_brace:]
+                                    src_content = (
+                                        src_content[:last_brace]
+                                        + "\n"
+                                        + comp_methods
+                                        + src_content[last_brace:]
+                                    )
 
                                 with open(src_file_path, "w", encoding="utf-8") as sf:
                                     sf.write(src_content)
@@ -2420,22 +2454,39 @@ if __name__ == "__main__":
                             with open(tgt_file_path, "r", encoding="utf-8") as tf:
                                 tgt_content = tf.read()
                             inv_field_name = to_camel_case_lower(src_class)
-                            if f"private {src_class} {inv_field_name};" not in tgt_content:
+                            if (
+                                f"private {src_class} {inv_field_name};"
+                                not in tgt_content
+                            ):
                                 print(f" 🔗 Finalizing inverse 1:1 in {tgt_class}")
                                 inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {src_class} {inv_field_name};\n\n'
-                                inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
+                                inv_caps = (
+                                    inv_field_name[0].upper() + inv_field_name[1:]
+                                )
                                 inv_methods = f"    public {src_class} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
                                 inv_methods += f"    public void set{inv_caps}({src_class} {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
 
-                                tgt_content = inject_import_if_missing(tgt_content, "jakarta.persistence.OneToOne")
-                                tgt_content = inject_import_if_missing(tgt_content, "jakarta.persistence.FetchType")
+                                tgt_content = inject_import_if_missing(
+                                    tgt_content, "jakarta.persistence.OneToOne"
+                                )
+                                tgt_content = inject_import_if_missing(
+                                    tgt_content, "jakarta.persistence.FetchType"
+                                )
 
                                 if "    public UUID getId()" in tgt_content:
-                                    tgt_content = tgt_content.replace("    public UUID getId()", f"{inv_field}    public UUID getId()")
+                                    tgt_content = tgt_content.replace(
+                                        "    public UUID getId()",
+                                        f"{inv_field}    public UUID getId()",
+                                    )
 
                                 last_brace = tgt_content.rfind("}")
                                 if last_brace != -1:
-                                    tgt_content = tgt_content[:last_brace] + "\n" + inv_methods + tgt_content[last_brace:]
+                                    tgt_content = (
+                                        tgt_content[:last_brace]
+                                        + "\n"
+                                        + inv_methods
+                                        + tgt_content[last_brace:]
+                                    )
 
                                 with open(tgt_file_path, "w", encoding="utf-8") as tf:
                                     tf.write(tgt_content)
@@ -2648,7 +2699,9 @@ if __name__ == "__main__":
                         src_file_path = f"src/main/java/{company_path}/{project_name}/entity/{src_class}.java"
                         tgt_file_path = f"src/main/java/{company_path}/{project_name}/entity/{tgt_class}.java"
 
-                        if os.path.exists(src_file_path) and os.path.exists(tgt_file_path):
+                        if os.path.exists(src_file_path) and os.path.exists(
+                            tgt_file_path
+                        ):
                             # Inject Composition field into source entity (parent)
                             with open(src_file_path, "r", encoding="utf-8") as sf:
                                 src_content = sf.read()
@@ -2660,17 +2713,34 @@ if __name__ == "__main__":
                                 comp_methods = f"    public {tgt_class} get{comp_caps}() {{\n        return {f_name};\n    }}\n\n"
                                 comp_methods += f"    public void set{comp_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
-                                src_content = inject_import_if_missing(src_content, "io.jmix.core.metamodel.annotation.Composition")
-                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.OneToOne")
-                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.JoinColumn")
-                                src_content = inject_import_if_missing(src_content, "jakarta.persistence.FetchType")
+                                src_content = inject_import_if_missing(
+                                    src_content,
+                                    "io.jmix.core.metamodel.annotation.Composition",
+                                )
+                                src_content = inject_import_if_missing(
+                                    src_content, "jakarta.persistence.OneToOne"
+                                )
+                                src_content = inject_import_if_missing(
+                                    src_content, "jakarta.persistence.JoinColumn"
+                                )
+                                src_content = inject_import_if_missing(
+                                    src_content, "jakarta.persistence.FetchType"
+                                )
 
                                 if "    public UUID getId()" in src_content:
-                                    src_content = src_content.replace("    public UUID getId()", f"{comp_field}    public UUID getId()")
+                                    src_content = src_content.replace(
+                                        "    public UUID getId()",
+                                        f"{comp_field}    public UUID getId()",
+                                    )
 
                                 last_brace = src_content.rfind("}")
                                 if last_brace != -1:
-                                    src_content = src_content[:last_brace] + "\n" + comp_methods + src_content[last_brace:]
+                                    src_content = (
+                                        src_content[:last_brace]
+                                        + "\n"
+                                        + comp_methods
+                                        + src_content[last_brace:]
+                                    )
 
                                 with open(src_file_path, "w", encoding="utf-8") as sf:
                                     sf.write(src_content)
@@ -2679,22 +2749,39 @@ if __name__ == "__main__":
                             with open(tgt_file_path, "r", encoding="utf-8") as tf:
                                 tgt_content = tf.read()
                             inv_field_name = to_camel_case_lower(src_class)
-                            if f"private {src_class} {inv_field_name};" not in tgt_content:
+                            if (
+                                f"private {src_class} {inv_field_name};"
+                                not in tgt_content
+                            ):
                                 print(f" 🔗 Finalizing inverse 1:1 in {tgt_class}")
                                 inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {src_class} {inv_field_name};\n\n'
-                                inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
+                                inv_caps = (
+                                    inv_field_name[0].upper() + inv_field_name[1:]
+                                )
                                 inv_methods = f"    public {src_class} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
                                 inv_methods += f"    public void set{inv_caps}({src_class} {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
 
-                                tgt_content = inject_import_if_missing(tgt_content, "jakarta.persistence.OneToOne")
-                                tgt_content = inject_import_if_missing(tgt_content, "jakarta.persistence.FetchType")
+                                tgt_content = inject_import_if_missing(
+                                    tgt_content, "jakarta.persistence.OneToOne"
+                                )
+                                tgt_content = inject_import_if_missing(
+                                    tgt_content, "jakarta.persistence.FetchType"
+                                )
 
                                 if "    public UUID getId()" in tgt_content:
-                                    tgt_content = tgt_content.replace("    public UUID getId()", f"{inv_field}    public UUID getId()")
+                                    tgt_content = tgt_content.replace(
+                                        "    public UUID getId()",
+                                        f"{inv_field}    public UUID getId()",
+                                    )
 
                                 last_brace = tgt_content.rfind("}")
                                 if last_brace != -1:
-                                    tgt_content = tgt_content[:last_brace] + "\n" + inv_methods + tgt_content[last_brace:]
+                                    tgt_content = (
+                                        tgt_content[:last_brace]
+                                        + "\n"
+                                        + inv_methods
+                                        + tgt_content[last_brace:]
+                                    )
 
                                 with open(tgt_file_path, "w", encoding="utf-8") as tf:
                                     tf.write(tgt_content)
