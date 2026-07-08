@@ -34,6 +34,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta
+from operator import sub
 from pathlib import Path
 
 # Load proiect path in variable PROIECT_PATH
@@ -1641,7 +1642,8 @@ def cmd_init_project(project_name, target_group, lang_input="en"):
     base_package = (
         f"{target_group.strip().strip('.')}.{project_name.strip().strip('.')}"
     )
-    repo_url = "https://github.com/jmix-framework/jmix-ai-template"
+    # Switch from original https://github.com/jmix-framework/jmix-ai-template to my fork, because the original disapear
+    repo_url = "https://github.com/florintanasa/jmix-ai-template"
     current_dir = os.getcwd()
     target_dir = os.path.join(current_dir, project_name)
 
@@ -1661,10 +1663,14 @@ def cmd_init_project(project_name, target_group, lang_input="en"):
         )
         sys.exit(1)
 
-    print("[*] Step 1: Downloading official Jmix starter template...")
+    print(
+        "[*] Step 1: Downloading Jmix starter template..."
+    )  # eliminate official because not more exist
     try:
+        # subprocess.run(["git", "clone", "--depth", "1", repo_url, project_name], check=True)
         subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, project_name], check=True
+            ["git", "clone", "--depth", "1", "-b", "v2.8.2", repo_url, project_name],
+            check=True,
         )
     except Exception as e:
         print(f"[-] Critical Error executing Git clone: {e}")
@@ -1858,6 +1864,25 @@ def cmd_init_project(project_name, target_group, lang_input="en"):
     gradlew_path = os.path.join(target_dir, "gradlew")
     if os.path.exists(gradlew_path):
         os.chmod(gradlew_path, 0o755)
+
+    print("[*] Step 3: Initializing a fresh Git repository...")
+    try:
+        # Run 'git init' inside the project folder
+        subprocess.run(["git", "init"], cwd=target_dir, check=True)
+
+        # Add all the template files to the new repository
+        subprocess.run(["git", "add", "."], cwd=target_dir, check=True)
+
+        # Create the first commit with the message 'Initial commit'
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"], cwd=target_dir, check=True
+        )
+        print("✅ Project initialized successfully with a fresh Git history!")
+
+    except subprocess.CalledProcessError:
+        print(
+            "Warning: Template was cloned, but failed to initialize fresh Git repository automatically."
+        )
 
     print("\n" + "=" * 60)
     print(f"[+] SUCCESS: Jmix project '{project_name}' successfully initialized!")
