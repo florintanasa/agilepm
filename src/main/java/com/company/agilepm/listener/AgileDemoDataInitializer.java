@@ -102,7 +102,7 @@ public class AgileDemoDataInitializer {
 		projectCRM.setStartDate(LocalDate.now());
 		dm.save(projectCRM);
 
-		// FIX: Stocăm instanțele etapelor pentru a le folosi la Task-uri
+		//FIX: Store stage instances to use in Tasks
 		Milestone m1 = createMilestone(
 			"Core Architecture & CLI Design",
 			LocalDate.now().plusDays(10),
