@@ -2537,7 +2537,9 @@ if __name__ == "__main__":
     </changeSet>
 </databaseChangeLog>
 """
-                            fk_dir = f"src/main/resources/{company_path}/{project_name}/liquibase/changelog/2026/07"
+                            current_year = datetime.now().strftime("%Y")
+                            current_month = datetime.now().strftime("%m")
+                            fk_dir = f"src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
                             os.makedirs(fk_dir, exist_ok=True)
                             fk_file = f"{fk_dir}/{timestamp_id_fk}-03-fk-{src_class.lower()}.xml"
                             with open(fk_file, "w", encoding="utf-8") as fk_f:
@@ -2747,7 +2749,9 @@ if __name__ == "__main__":
     </changeSet>
 </databaseChangeLog>
 """
-                            fk_dir = f"src/main/resources/{company_path}/{project_name}/liquibase/changelog/2026/07"
+                            current_year = datetime.now().strftime("%Y")
+                            current_month = datetime.now().strftime("%m")
+                            fk_dir = f"src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
                             os.makedirs(fk_dir, exist_ok=True)
                             fk_file = f"{fk_dir}/{timestamp_id_fk}-03-fk-{src_class.lower()}.xml"
                             with open(fk_file, "w", encoding="utf-8") as fk_f:
