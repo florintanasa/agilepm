@@ -925,7 +925,7 @@ def gen_liquibase_relations_changelog(name, relations_list):
     )
     os.makedirs(target_dir, exist_ok=True)
 
-    filename = f"{target_dir}/{timestamp_id}_02_relations_{name.lower()}.xml"
+    filename = f"{target_dir}/{timestamp_id}-02-relations_{name.lower()}.xml"
     with open(filename, "w", encoding="utf-8") as f:
         f.write(xml_content)
     print(f" -> Generated Liquibase Relations XML: {filename}")
