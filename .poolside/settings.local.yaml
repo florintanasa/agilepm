@@ -29,3 +29,22 @@ tools:
             - pkill *
             - awk *
             - xargs *
+            - find *
+            - sed *
+            - sleep 5
+            - "true"
+            - cut *
+            - uniq *
+            - ./gradlew test
+            - cd *
+            - mv *
+            - '[ *'
+            - ./gradlew test *
+            - sort *
+            - sleep 3
+            - ./gradlew bootRun *
+            - ./gradlew *
+            - unzip *
+            - strings
+            - jar tf *
+            - git show *
