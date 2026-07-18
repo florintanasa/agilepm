@@ -76,24 +76,25 @@ public class AgileDemoDataInitializer {
 		assignRoleToUser(clientUser.getUsername(), "client-viewer");
 
 		// 3. Populate UserConfig & UserProfile (1:1 Relation)
-		// DISABLED: Temporarily commented for COMPOSITION_1:1 development
-		// UserConfig devConfig = dm.create(UserConfig.class);
-		// devConfig.setTheme("Dark-Mode-Zed");
-		// dm.save(devConfig);
-		//
-		// UserProfile devProfile = dm.create(UserProfile.class);
-		// devProfile.setPhoneNumber("+40712345678");
-		// devProfile.setUser(developerUser);
-		// dm.save(devProfile);
-		//
-		// UserConfig mgrConfig = dm.create(UserConfig.class);
-		// mgrConfig.setTheme("Light-Mode-Standard");
-		// dm.save(mgrConfig);
-		//
-		// UserProfile mgrProfile = dm.create(UserProfile.class);
-		// mgrProfile.setPhoneNumber("+40799988877");
-		// mgrProfile.setUser(managerUser);
-		// dm.save(mgrProfile);
+		UserProfile devProfile = dm.create(UserProfile.class);
+		devProfile.setPhoneNumber("+40712345678");
+		devProfile.setUser(developerUser);
+		devProfile = dm.save(devProfile);
+
+		UserConfig devConfig = dm.create(UserConfig.class);
+		devConfig.setTheme("Dark-Mode-Zed");
+		devConfig.setProfile(devProfile);
+		dm.save(devConfig);
+
+		UserProfile mgrProfile = dm.create(UserProfile.class);
+		mgrProfile.setPhoneNumber("+40799988877");
+		mgrProfile.setUser(managerUser);
+		mgrProfile = dm.save(mgrProfile);
+
+		UserConfig mgrConfig = dm.create(UserConfig.class);
+		mgrConfig.setTheme("Light-Mode-Standard");
+		mgrConfig.setProfile(mgrProfile);
+		dm.save(mgrConfig);
 
 		// 4. Populate Operational Data Structures & Compositions
 		Project projectCRM = dm.create(Project.class);
