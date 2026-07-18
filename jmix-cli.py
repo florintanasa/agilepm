@@ -1500,14 +1500,16 @@ def update_messages_entity(project_dir, base_package, entity_name, traits_list):
                 "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
             )
             readable_en = spaced_name.capitalize()
-            target_lines.append(
-                f"{COMPANY}.{project_name}.entity/{n}.{f_name}={readable_en}"
-            )
 
-            translate_label_relation = ask_ollama_translation(readable_en, lang_name)
-            target_lines.append(
-                f"{COMPANY}.{project_name}.entity/{n}.{f_name}={translate_label_relation}"
-            )
+            if locale == "en":
+                target_lines.append(
+                    f"{base_package}.entity/{n}.{f_name}={readable_en}"
+                )
+            else:
+                translate_label_relation = ask_ollama_translation(readable_en, lang_name)
+                target_lines.append(
+                    f"{base_package}.entity/{n}.{f_name}={translate_label_relation}"
+                )
 
         # We are parsing the entity name (e.g., UserStep -> User step)
         spaced_title = (
@@ -1523,17 +1525,18 @@ def update_messages_entity(project_dir, base_package, entity_name, traits_list):
 
                 # Generate beautiful English names (e.g., steps -> Steps)
                 readable_title_en = f_name.capitalize()
-                target_lines.append(
-                    f"{COMPANY}.{project_name}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}={readable_title_en}"
-                )
 
-                translate_label_composition = ask_ollama_translation(
-                    readable_title_en, lang_name
-                )
-
-                target_lines.append(
-                    f"{COMPANY}.{project_name}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}={translate_label_composition}"
-                )
+                if locale == "en":
+                    target_lines.append(
+                        f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}={readable_title_en}"
+                    )
+                else:
+                    translate_label_composition = ask_ollama_translation(
+                        readable_title_en, lang_name
+                    )
+                    target_lines.append(
+                        f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}={translate_label_composition}"
+                    )
 
         # --- INTERNAL LINE WRITER WITH STRICT EQUALITY PREFIX MATCHING ---
         def append_unique(file_path, lines_to_add):
@@ -2564,92 +2567,6 @@ if __name__ == "__main__":
             if fields_list:
                 gen_detail_view_from_csv(ent, fields_list, relations_list)
         print("\n✅ UI Detail views generation completed!")
-        sys.exit(0)
-
-    elif action == "gen-entities":
-        print("[*] Launching automatic sequential entity generation engine...")
-        ordered_list = get_sorted_entities_by_dependency()
-        print(f"[*] Calculated generation sequence: {ordered_list}")
-
-        for ent in ordered_list:
-            if ent == "User":
-                print(
-                    "👤 System User detected in batch queue. Skipping base table creation..."
-                )
-                relations_list = get_relations_from_csv("relations.csv", "User")
-                if relations_list:
-                    gen_liquibase_relations_changelog("User", relations_list)
-                    inject_relations_into_existing_user(relations_list)
-
-                    # Ensure User translation runs safely via our parametric function
-                    update_messages_entity(
-                        project_dir=".",
-                        base_package=COMPANY + "." + PROJECT,
-                        entity_name="User",
-                        traits_list=[],
-                    )
-            else:
-                print(f"▶️ Automating Entity generation for: {ent}")
-                traits = get_traits_from_csv("traits.csv", ent)
-                fields_list = get_entities_from_csv("entities.csv", ent)
-                relations_list = get_relations_from_csv("relations.csv", ent)
-
-                if fields_list:
-                    gen_entity_mechanic_from_csv(
-                        ent, fields_list, traits, relations_list
-                    )
-                    gen_liquibase_changelog_from_csv(ent, fields_list, traits)
-                    if relations_list:
-                        gen_liquibase_relations_changelog(ent, relations_list)
-
-                    # DYNAMIC TRAITS COLLECTION: Parse field names from entities.csv for update_messages_entity
-                    computed_traits_list = []
-                    if os.path.exists("entities.csv"):
-                        with open("entities.csv", mode="r", encoding="utf-8") as f:
-                            reader = csv.DictReader(f)
-                            for row in reader:
-                                if row["entity_name"].strip() == ent.strip():
-                                    computed_traits_list.append(
-                                        row["field_name"].strip()
-                                    )
-
-                    if not computed_traits_list:
-                        computed_traits_list = ["name"]
-
-                    # TRIGGER MESSAGES: Generate parametric bilingv messages inside the orchestration loop!
-                    update_messages_entity(
-                        project_dir=".",
-                        base_package=COMPANY + "." + PROJECT,
-                        entity_name=ent,
-                        traits_list=computed_traits_list,
-                    )
-
-                    # FIX: Trigger messages translation for EVERY entity automatically in the loop!
-                    update_messages_entity(
-                        project_dir=".",
-                        base_package=COMPANY + "." + PROJECT,
-                        entity_name=ent,
-                        traits_list=computed_traits_list,
-                    )
-        sys.exit(0)
-
-    elif action == "gen-ui":
-        print("[*] Launching automatic global FlowUI generation engine...")
-        ordered_list = get_sorted_entities_by_dependency()
-
-        for ent in ordered_list:
-            print(f"📺 Generating UI layouts (List & Detail) for: {ent}")
-            if ent == "User":
-                relations_list = get_relations_from_csv("relations.csv", "User")
-                inject_list_ui_into_existing_user(relations_list)
-                inject_detail_ui_into_existing_user(relations_list)
-            else:
-                fields_list = get_entities_from_csv("entities.csv", ent)
-                relations_list = get_relations_from_csv("relations.csv", ent)
-                if fields_list:
-                    gen_list_view_from_csv(ent, fields_list, relations_list)
-                    gen_detail_view_from_csv(ent, fields_list, relations_list)
-                    update_menu(ent)
         sys.exit(0)
 
     elif action == "build-all":
