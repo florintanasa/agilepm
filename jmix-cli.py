@@ -1652,7 +1652,7 @@ def cmd_init_project(project_name, target_group, lang_input="en"):
 
     # Keep the exact casing for file names and properties (e.g., ro_RO, ro_MD)
     lang_suffix = lang_input.strip()
-    lang_key_for_map = lang_suffix.lower()
+    lang_key_for_map = lang_suffix
 
     print(f"\n[*] Initializing New Jmix Project: '{project_name}'")
     print(f"[*] Group ID:                 {target_group}")
