@@ -204,6 +204,7 @@ Running `build-all` creates:
 4. **Messages** (`messages.properties`, `messages_ro.properties`)
    - Entity labels and field names
    - View titles and menu entries
+   - For translate is used local `ollama` with model `translategemma:4b`, if was installed
 
 5. **Security Roles** (`src/main/java/.../security/`)
    - `@ResourceRole` annotated classes
@@ -222,8 +223,25 @@ Running `build-all` creates:
 ## Running the Application
 
 ```bash
+# Clone the project in your computer
+git clone https://github.com/florintanasa/agilepm
+# Full generation (all phases)
+python3 jmix-cli.py build-all
+# Run application
 ./gradlew bootRun
 # Access at http://localhost:8080 with admin/admin credentials
+```
+
+## Only to compile
+
+```bash
+./gradlew compileJava
+```
+
+## To clean your build
+
+```bash
+./gradlew clean
 ```
 
 ## Testing
@@ -231,6 +249,19 @@ Running `build-all` creates:
 ```bash
 ./gradlew test
 ```
+
+> [!INFO]
+> If you have errors caused by Liquibase `liquibase.exception.DatabaseException: object name already exists: ` these mean you have an old database,
+> and is necessary to delete old files: `rm -rf .jmix/ build/ .gradle/`
+
+## Demo data
+In `listener` exist a class `AgileDemoDataIniTializer` this populate the data base with values at first run.  
+To test the users roles we can use next credentials:
+|User|Password|Roles|
+|----|--------|-----|
+|`manager`|1|ui-minimal, project-manager|
+|`developer`|1|ui-minimal, developer-role|
+|`client`|1|ui-minimal, client-viewer|
 
 ## CSV Configuration Tables
 
@@ -300,3 +331,6 @@ Running `build-all` creates:
 | Developer Role | developer-role | User | false | false | false | true | false | false |
 | Client Viewer | client-viewer | Project | true | false | false | true | false | false |
 | Client Viewer | client-viewer | Task | true | false | false | true | false | false |
+
+## Screenshoot
+![ Agile Project Management System](agilepm_screenshoot.png)
