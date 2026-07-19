@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 from typing import Any
 
 from jmix_cli.entity import get_entities_from_csv
@@ -7,7 +7,6 @@ from jmix_cli.utils import (
     PROIECT_PATH,
     append_unique,
     company_path,
-    ensure_dir,
     inject_import_if_missing,
     project_name,
     write_file,
@@ -119,12 +118,10 @@ public class {name}ListView extends StandardListView<{name}> {{
 }}
 """
 
-    view_dir = f"{PROIECT_PATH}/src/main/resources/{company_path}/{project_name}/view/{lower_name}"
-    java_dir = f"{PROIECT_PATH}/src/main/java/{company_path}/{project_name}/view/{lower_name}"
-    ensure_dir(view_dir)
-    ensure_dir(java_dir)
-    write_file(f"{view_dir}/{lower_name}-list-view.xml", xml_content)
-    write_file(f"{java_dir}/{name}ListView.java", java_content)
+    view_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "view" / lower_name
+    java_dir = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "view" / lower_name
+    write_file(view_dir / f"{lower_name}-list-view.xml", xml_content)
+    write_file(java_dir / f"{name}ListView.java", java_content)
     print(f" 🖥️ Successfully generated List View for: {name}")
 
 
@@ -225,12 +222,10 @@ public class {name}DetailView extends StandardDetailView<{name}> {{
 }}
 """
 
-    view_dir = f"{PROIECT_PATH}/src/main/resources/{company_path}/{project_name}/view/{lower_name}"
-    java_dir = f"{PROIECT_PATH}/src/main/java/{company_path}/{project_name}/view/{lower_name}"
-    ensure_dir(view_dir)
-    ensure_dir(java_dir)
-    write_file(f"{view_dir}/{lower_name}-detail-view.xml", xml_content)
-    write_file(f"{java_dir}/{name}DetailView.java", java_content)
+    view_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "view" / lower_name
+    java_dir = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "view" / lower_name
+    write_file(view_dir / f"{lower_name}-detail-view.xml", xml_content)
+    write_file(java_dir / f"{name}DetailView.java", java_content)
     print(f" 🖥️ Detail View successfully generated for: {name}")
 
     _inject_composition_ui_into_parent(name, fields_list, relations_list)
@@ -248,11 +243,18 @@ def _inject_composition_ui_into_parent(
         src_class = name
         tgt_xml_path = (
             PROIECT_PATH
-            + f"/src/main/resources/{company_path}/{project_name}/view/{tgt_lower}/{tgt_lower}-detail-view.xml"
+            / "src"
+            / "main"
+            / "resources"
+            / company_path
+            / project_name
+            / "view"
+            / tgt_lower
+            / f"{tgt_lower}-detail-view.xml"
         )
-        if not os.path.exists(tgt_xml_path):
+        if not tgt_xml_path.exists():
             continue
-        xml_tgt_content = open(tgt_xml_path, "r", encoding="utf-8").read()
+        xml_tgt_content = tgt_xml_path.read_text(encoding="utf-8")
         if f'id="{f_name}DataGrid"' in xml_tgt_content:
             continue
 
@@ -300,11 +302,18 @@ def _inject_composition_ui_into_parent(
 def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> None:
     xml_path = (
         PROIECT_PATH
-        + f"/src/main/resources/{company_path}/{project_name}/view/user/user-list-view.xml"
+        / "src"
+        / "main"
+        / "resources"
+        / company_path
+        / project_name
+        / "view"
+        / "user"
+        / "user-list-view.xml"
     )
-    if not os.path.exists(xml_path):
+    if not xml_path.exists():
         return
-    xml_content = open(xml_path, "r", encoding="utf-8").read()
+    xml_content = xml_path.read_text(encoding="utf-8")
     modified = False
     for rel in relations_list:
         if rel["type"] != "N:1":
@@ -337,11 +346,18 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> N
 def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> None:
     xml_path = (
         PROIECT_PATH
-        + f"/src/main/resources/{company_path}/{project_name}/view/user/user-detail-view.xml"
+        / "src"
+        / "main"
+        / "resources"
+        / company_path
+        / project_name
+        / "view"
+        / "user"
+        / "user-detail-view.xml"
     )
-    if not os.path.exists(xml_path):
+    if not xml_path.exists():
         return
-    xml_content = open(xml_path, "r", encoding="utf-8").read()
+    xml_content = xml_path.read_text(encoding="utf-8")
     accumulated_containers = ""
     accumulated_components = ""
     modified = False

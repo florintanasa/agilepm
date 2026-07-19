@@ -33,7 +33,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, project_name
+from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, validate_csv_path
 from jmix_cli.entity import (
     get_entities_from_csv,
     get_relations_from_csv,
@@ -79,7 +79,7 @@ def _generate_single_entity(name: str) -> None:
             sys.exit(1)
         print(f"Generating Entity {name} from CSV architecture...")
         gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
-        computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(open("entities.csv")) if row["entity_name"].strip() == name.strip()]
+        computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == name.strip()]
         if not computed_traits_list:
             computed_traits_list = ["name"]
         update_messages_entity(
@@ -96,9 +96,11 @@ def _generate_single_entity(name: str) -> None:
 
 def _finalize_composition_relationships() -> None:
     print("\n[⚡] PHASE 2.5: Finalizing Composition relationships...")
-    if not os.path.exists("relations.csv"):
+    relations_path = Path("relations.csv")
+    if not relations_path.exists():
         return
-    with open("relations.csv", mode="r", encoding="utf-8") as f:
+    validate_csv_path("relations.csv", ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"])
+    with relations_path.open(encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             r_type = row["relation_type"].strip()
@@ -107,12 +109,11 @@ def _finalize_composition_relationships() -> None:
             src_class = row["source_entity"].strip()
             tgt_class = row["target_entity"].strip()
             f_name = row["field_name"].strip()
-            src_file_path = f"src/main/java/{company_path}/{project_name}/entity/{src_class}.java"
-            tgt_file_path = f"src/main/java/{company_path}/{project_name}/entity/{tgt_class}.java"
-            if not os.path.exists(src_file_path) or not os.path.exists(tgt_file_path):
+            src_file_path = Path("src") / "main" / "java" / company_path / project_name / "entity" / f"{src_class}.java"
+            tgt_file_path = Path("src") / "main" / "java" / company_path / project_name / "entity" / f"{tgt_class}.java"
+            if not src_file_path.exists() or not tgt_file_path.exists():
                 continue
-            with open(src_file_path, "r", encoding="utf-8") as sf:
-                src_content = sf.read()
+            src_content = src_file_path.read_text(encoding="utf-8")
             if f"private {tgt_class} {f_name};" not in src_content:
                 print(f" 🔗 Finalizing @Composition 1:1 in {src_class}")
                 sql_fk_col = f"{f_name.upper()}_ID"
@@ -137,11 +138,9 @@ def _finalize_composition_relationships() -> None:
                         + comp_methods
                         + src_content[last_brace:]
                     )
-                with open(src_file_path, "w", encoding="utf-8") as sf:
-                    sf.write(src_content)
+                src_file_path.write_text(src_content, encoding="utf-8")
 
-            with open(tgt_file_path, "r", encoding="utf-8") as tf:
-                tgt_content = tf.read()
+            tgt_content = tgt_file_path.read_text(encoding="utf-8")
             inv_field_name = src_class[0].lower() + src_class[1:]
             if f"private {src_class} {inv_field_name};" not in tgt_content:
                 print(f" 🔗 Finalizing inverse 1:1 in {tgt_class}")
@@ -164,8 +163,7 @@ def _finalize_composition_relationships() -> None:
                         + inv_methods
                         + tgt_content[last_brace:]
                     )
-                with open(tgt_file_path, "w", encoding="utf-8") as tf:
-                    tf.write(tgt_content)
+                tgt_file_path.write_text(tgt_content, encoding="utf-8")
 
             timestamp_id_fk = datetime.now().strftime("%Y%m%d%H%M%S")
             fk_changelog = f"""<?xml version="1.0" encoding="UTF-8" ?>
@@ -187,11 +185,10 @@ def _finalize_composition_relationships() -> None:
 """
             current_year = datetime.now().strftime("%Y")
             current_month = datetime.now().strftime("%m")
-            fk_dir = f"src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
-            os.makedirs(fk_dir, exist_ok=True)
-            fk_file = f"{fk_dir}/{timestamp_id_fk}-03-fk-{src_class.lower()}.xml"
-            with open(fk_file, "w", encoding="utf-8") as fk_f:
-                fk_f.write(fk_changelog)
+            fk_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog" / current_year / current_month
+            fk_dir.mkdir(parents=True, exist_ok=True)
+            fk_file = fk_dir / f"{timestamp_id_fk}-03-fk-{src_class.lower()}.xml"
+            fk_file.write_text(fk_changelog, encoding="utf-8")
             print(f" 🔗 Added FK constraint changelog: {fk_file}")
     print("\n✅ Entity generation completed!")
 
@@ -199,21 +196,19 @@ def _finalize_composition_relationships() -> None:
 def _update_menu(n: str) -> None:
     print("Updating menu.xml for " + n + "...")
     menu_path = (
-        PROIECT_PATH + f"/src/main/resources/{company_path}/{project_name}/menu.xml"
+        PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "menu.xml"
     )
-    if not os.path.exists(menu_path):
+    if not menu_path.exists():
         print(f"⚠️ I not found the file menu.xml in the path {menu_path}!")
         return
     menu_item = f'    <item view="{n}.list" title="msg://{COMPANY}.{project_name}.view.{n.lower()}/{n.lower()}ListView.title"/>\n'
-    with open(menu_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    content = menu_path.read_text(encoding="utf-8")
     if ('view="' + n + '.list"') in content:
         print("ℹ️ View " + n + ".list allready exist in menu.")
         return
     if "</menu>" in content:
         new_content = content.replace("</menu>", menu_item + "</menu>")
-        with open(menu_path, "w", encoding="utf-8") as f:
-            f.write(new_content)
+        menu_path.write_text(new_content, encoding="utf-8")
         print("Menu injected successfully into menu.xml!")
     else:
         print("⚠️ Invalid structure for menu.xml (missing closing </menu> tag)!")
@@ -222,8 +217,8 @@ def _update_menu(n: str) -> None:
 def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en") -> None:
     base_package = f"{target_group.strip().strip('.')}.{project_name.strip().strip('.')}"
     repo_url = "https://github.com/florintanasa/jmix-ai-template"
-    current_dir = os.getcwd()
-    target_dir = os.path.join(current_dir, project_name)
+    current_dir = Path.cwd()
+    target_dir = current_dir / project_name
     lang_suffix = lang_input.strip()
     lang_key_for_map = lang_suffix
 
@@ -233,7 +228,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
     print(f"[*] Requested Locale:         {lang_suffix}")
     print("-" * 60)
 
-    if os.path.exists(target_dir):
+    if target_dir.exists():
         print(f"[-] Critical Error: Folder '{project_name}' already exists in this directory.")
         sys.exit(1)
 
@@ -247,33 +242,33 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
         print(f"[-] Critical Error executing Git clone: {e}")
         sys.exit(1)
 
-    shutil.rmtree(os.path.join(target_dir, ".git"), ignore_errors=True)
+    shutil.rmtree(target_dir / ".git", ignore_errors=True)
     print("[+] Git template history cleared successfully.")
 
     old_package_dots = "io.jmix.tempate"
     old_package_slashes = "io/jmix/tempate"
-    new_package_slashes = os.path.join(*base_package.split("."))
+    new_package_slashes = Path(*base_package.split("."))
     new_package_property_slashes = base_package.replace(".", "/")
 
     paths_to_move = [
-        (os.path.join(target_dir, "src", "main", "java"), old_package_slashes, new_package_slashes),
-        (os.path.join(target_dir, "src", "test", "java"), old_package_slashes, new_package_slashes),
-        (os.path.join(target_dir, "src", "main", "resources"), old_package_slashes, new_package_slashes),
+        (target_dir / "src" / "main" / "java", old_package_slashes, new_package_slashes),
+        (target_dir / "src" / "test" / "java", old_package_slashes, new_package_slashes),
+        (target_dir / "src" / "main" / "resources", old_package_slashes, new_package_slashes),
     ]
 
     print("[*] Step 2: Refactoring structural Java source layers and XML resources...")
     for base_root, old_rel, new_rel in paths_to_move:
-        src_dir = os.path.join(base_root, old_rel)
-        dst_dir = os.path.join(base_root, new_rel)
-        if os.path.exists(src_dir):
-            os.makedirs(dst_dir, exist_ok=True)
-            for item in os.listdir(src_dir):
-                shutil.move(os.path.join(src_dir, item), os.path.join(dst_dir, item))
-            shutil.rmtree(os.path.join(base_root, "io"), ignore_errors=True)
+        src_dir = base_root / old_rel
+        dst_dir = base_root / new_rel
+        if src_dir.exists():
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for item in src_dir.iterdir():
+                shutil.move(str(item), str(dst_dir / item.name))
+            shutil.rmtree(base_root / "io", ignore_errors=True)
 
     print("[*] Step 3: Injecting metadata and localization configuration dependencies...")
-    build_gradle_path = os.path.join(target_dir, "build.gradle")
-    app_properties_path = os.path.join(target_dir, "src", "main", "resources", "application.properties")
+    build_gradle_path = target_dir / "build.gradle"
+    app_properties_path = target_dir / "src" / "main" / "resources" / "application.properties"
 
     JMIX_TRANSLATIONS_MAP = {
         "ar": "ar", "ckb": "ckb", "de": "de", "el": "el", "es": "es", "fr": "fr",
@@ -281,9 +276,8 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
         "ro": "ro", "ro_RO": "ro", "ro_MD": "ro", "ru": "ru", "tr": "tr", "zh": "zh-cn", "zh_CN": "zh-cn",
     }
 
-    if os.path.exists(build_gradle_path):
-        with open(build_gradle_path, "r", encoding="utf-8") as f:
-            gradle_content = f.read()
+    if build_gradle_path.exists():
+        gradle_content = build_gradle_path.read_text(encoding="utf-8")
         gradle_content = gradle_content.replace(
             r"group\s*=\s*['\"].*?['\"]", f"group = '{target_group}'"
         )
@@ -296,12 +290,10 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
                     f"dependencies {{{addon_dependency} // Automatically configured via Jmix CLI",
                 )
                 print(f"[+] Injected localization add-on dependency: jmix-translations-{addon_suffix}")
-        with open(build_gradle_path, "w", encoding="utf-8") as f:
-            f.write(gradle_content)
+        build_gradle_path.write_text(gradle_content, encoding="utf-8")
 
-    if os.path.exists(app_properties_path):
-        with open(app_properties_path, "r", encoding="utf-8") as f:
-            prop_content = f.read()
+    if app_properties_path.exists():
+        prop_content = app_properties_path.read_text(encoding="utf-8")
         if "jmix.core.available-locales" in prop_content:
             if lang_key_for_map != "en":
                 prop_content = prop_content.replace(
@@ -314,60 +306,58 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
             if lang_key_for_map != "en":
                 locales_line += f",{lang_suffix}"
             prop_content += locales_line
-        with open(app_properties_path, "w", encoding="utf-8") as f:
-            f.write(prop_content)
+        app_properties_path.write_text(prop_content, encoding="utf-8")
 
     if lang_key_for_map != "en":
-        msg_dir = os.path.join(target_dir, "src", "main", "resources", new_package_slashes)
-        os.makedirs(msg_dir, exist_ok=True)
-        template_eng_msg_path = os.path.join(msg_dir, "messages_en.properties")
-        base_fallback_msg_path = os.path.join(msg_dir, "messages.properties")
-        custom_messages_path = os.path.join(msg_dir, f"messages_{lang_suffix}.properties")
-        if os.path.exists(template_eng_msg_path) and not os.path.exists(base_fallback_msg_path):
+        msg_dir = target_dir / "src" / "main" / "resources" / new_package_slashes
+        msg_dir.mkdir(parents=True, exist_ok=True)
+        template_eng_msg_path = msg_dir / "messages_en.properties"
+        base_fallback_msg_path = msg_dir / "messages.properties"
+        custom_messages_path = msg_dir / f"messages_{lang_suffix}.properties"
+        if template_eng_msg_path.exists() and not base_fallback_msg_path.exists():
             shutil.copy2(template_eng_msg_path, base_fallback_msg_path)
             print("[+] Generated standard base fallback file: messages.properties")
-        if not os.path.exists(custom_messages_path):
-            if os.path.exists(template_eng_msg_path):
+        if not custom_messages_path.exists():
+            if template_eng_msg_path.exists():
                 shutil.copy2(template_eng_msg_path, custom_messages_path)
-                with open(custom_messages_path, "r+", encoding="utf-8") as f:
-                    content = f.read()
-                    f.seek(0, 0)
-                    f.write(
-                        f"# Automatically initialized as a bilingual twin for: {lang_suffix}\n"
-                        + content
-                    )
+                content = custom_messages_path.read_text(encoding="utf-8")
+                custom_messages_path.write_text(
+                    f"# Automatically initialized as a bilingual twin for: {lang_suffix}\n"
+                    + content,
+                    encoding="utf-8",
+                )
                 print(f"[+] Created localized bundle twin with English base: messages_{lang_suffix}.properties")
             else:
-                with open(custom_messages_path, "w", encoding="utf-8") as f:
-                    f.write(f"# Custom localization translations properties file for: {lang_suffix}\n")
+                custom_messages_path.write_text(
+                    f"# Custom localization translations properties file for: {lang_suffix}\n",
+                    encoding="utf-8",
+                )
                 print(f"[+] Initialized empty bundle (messages_en.properties was missing): messages_{lang_suffix}.properties")
 
-    files_to_update = [os.path.join(target_dir, "settings.gradle"), app_properties_path]
+    files_to_update = [target_dir / "settings.gradle", app_properties_path]
     for base_root, _, new_rel in paths_to_move:
-        scan_root = os.path.join(base_root, new_rel)
-        if os.path.exists(scan_root):
+        scan_root = base_root / new_rel
+        if scan_root.exists():
             for root, _, files in os.walk(scan_root):
                 for file in files:
                     if file.endswith((".java", ".xml", ".properties")):
-                        files_to_update.append(os.path.join(root, file))
+                        files_to_update.append(Path(root) / file)
 
     for file_path in files_to_update:
-        if file_path == build_gradle_path or not os.path.exists(file_path):
+        if file_path == build_gradle_path or not file_path.exists():
             continue
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        if "settings.gradle" in file_path:
+        content = file_path.read_text(encoding="utf-8")
+        if "settings.gradle" in str(file_path):
             content = content.replace(
                 r"rootProject\.name\s*=\s*['\"].*?['\"]",
                 f"rootProject.name = '{project_name}'",
             )
         content = content.replace(old_package_dots, base_package)
         content = content.replace(old_package_slashes, new_package_property_slashes)
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        file_path.write_text(content, encoding="utf-8")
 
-    gradlew_path = os.path.join(target_dir, "gradlew")
-    if os.path.exists(gradlew_path):
+    gradlew_path = target_dir / "gradlew"
+    if gradlew_path.exists():
         os.chmod(gradlew_path, 0o755)
 
     print("[*] Step 3: Initializing a fresh Git repository...")

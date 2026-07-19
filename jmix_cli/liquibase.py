@@ -93,7 +93,7 @@ def gen_liquibase_changelog_from_csv(
     current_year = datetime.now().strftime("%Y")
     current_month = datetime.now().strftime("%m")
     target_dir = (
-        PROIECT_PATH
+        str(PROIECT_PATH)
         + f"/src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
     )
     ensure_dir(target_dir)
@@ -209,7 +209,7 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
     current_year = datetime.now().strftime("%Y")
     current_month = datetime.now().strftime("%m")
     target_dir = (
-        PROIECT_PATH
+        str(PROIECT_PATH)
         + f"/src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
     )
     ensure_dir(target_dir)

@@ -1,5 +1,5 @@
 import csv
-import os
+from pathlib import Path
 from typing import Any
 
 from jmix_cli.utils import (
@@ -7,7 +7,6 @@ from jmix_cli.utils import (
     PROIECT_PATH,
     append_unique,
     company_path,
-    ensure_dir,
     inject_import_if_missing,
     project_name,
     to_camel_case_lower,
@@ -23,9 +22,11 @@ def get_traits_from_csv(csv_path: str, target_entity_name: str) -> dict[str, Any
         "audit_of_modification": True,
         "soft_delete": False,
     }
-    if not os.path.exists(csv_path):
+    csv_file = Path(csv_path)
+    if not csv_file.exists():
         return traits
-    with open(csv_path, mode="r", encoding="utf-8") as f:
+    validate_csv_path(csv_path, ["entity_name", "versioned", "audit_of_creation", "audit_of_modification", "soft_delete"])
+    with csv_file.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row["entity_name"].strip().lower() == target_entity_name.lower():
@@ -43,10 +44,12 @@ def get_traits_from_csv(csv_path: str, target_entity_name: str) -> dict[str, Any
 
 def get_entities_from_csv(csv_path: str, target_entity_name: str) -> list[dict[str, Any]]:
     fields_list: list[dict[str, Any]] = []
-    if not os.path.exists(csv_path):
+    csv_file = Path(csv_path)
+    if not csv_file.exists():
         print(f" ! Error: The file CSV was not found at : {csv_path}")
         return fields_list
-    with open(csv_path, mode="r", encoding="utf-8") as f:
+    validate_csv_path(csv_path, ["entity_name", "field_name", "field_type", "mandatory", "unique"])
+    with csv_file.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row["entity_name"].strip().lower() == target_entity_name.lower():
@@ -180,11 +183,9 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
             java_relation_methods += f"    public {tgt_class} get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
             java_relation_methods += f"    public void set{f_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
-            tgt_file_path = os.path.join(
-                PROIECT_PATH, "src", "main", "java", company_path, project_name, "entity", f"{tgt_class}.java"
-            )
-            if os.path.exists(tgt_file_path):
-                java_tgt_content = open(tgt_file_path, "r", encoding="utf-8").read()
+            tgt_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{tgt_class}.java"
+            if tgt_file_path.exists():
+                java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
                 inv_field_name = name[0].lower() + name[1:]
                 if f"private {name} {inv_field_name};" not in java_tgt_content:
                     print(f" 🔗 Infiltrating inverse 1:1 association into the parent class: {tgt_class}")
@@ -205,8 +206,7 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
                                 f"package {COMPANY}.{project_name}.entity;",
                                 f"package {COMPANY}.{project_name}.entity;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.FetchType;",
                             )
-                        with open(tgt_file_path, "w", encoding="utf-8") as f:
-                            f.write(java_tgt_content)
+                        tgt_file_path.write_text(java_tgt_content, encoding="utf-8")
 
         elif rel["type"] == "N:N":
             f_name = rel["field"]
@@ -228,11 +228,9 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
             java_relation_methods += f"    public void set{f_caps}(List<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
             inv_field_name = name.lower() + "s" if not name.endswith("s") else name.lower()
-            tgt_file_path = os.path.join(
-                PROIECT_PATH, "src", "main", "java", company_path, project_name, "entity", f"{tgt_class}.java"
-            )
-            if os.path.exists(tgt_file_path):
-                java_tgt_content = open(tgt_file_path, "r", encoding="utf-8").read()
+            tgt_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{tgt_class}.java"
+            if tgt_file_path.exists():
+                java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
                 if f"private List<{name}> {inv_field_name};" not in java_tgt_content:
                     print(f" 🔗 Injecting inverse N:N association into the target class: {tgt_class}")
                     inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{name}> {inv_field_name};\n\n'
@@ -254,8 +252,7 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
                             + inv_methods
                             + java_tgt_content[last_brace:]
                         )
-                    with open(tgt_file_path, "w", encoding="utf-8") as f:
-                        f.write(java_tgt_content)
+                    tgt_file_path.write_text(java_tgt_content, encoding="utf-8")
 
     return java_relation_fields, java_relation_methods, dinamic_imports
 
@@ -267,12 +264,10 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
         tgt_class = rel["target"]
         f_name = rel["field"]
         src_class = name
-        tgt_file_path = os.path.join(
-            PROIECT_PATH, "src", "main", "java", company_path, project_name, "entity", f"{tgt_class}.java"
-        )
-        if not os.path.exists(tgt_file_path):
+        tgt_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{tgt_class}.java"
+        if not tgt_file_path.exists():
             continue
-        java_tgt_content = open(tgt_file_path, "r", encoding="utf-8").read()
+        java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
         if (
             f"private List<{src_class}> {f_name};" in java_tgt_content
             or f"private {src_class} {f_name};" in java_tgt_content
@@ -306,11 +301,9 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
             new_field = f'@Composition\n    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {src_class} {f_name};\n\n'
             new_methods = f"    public {src_class} get{f_caps}() {{\n        return {f_name};\n    }}\n\n    public void set{f_caps}({src_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
 
-            src_file_path = os.path.join(
-                PROIECT_PATH, "src", "main", "java", company_path, project_name, "entity", f"{src_class}.java"
-            )
-            if os.path.exists(src_file_path):
-                java_src_content = open(src_file_path, "r", encoding="utf-8").read()
+            src_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{src_class}.java"
+            if src_file_path.exists():
+                java_src_content = src_file_path.read_text(encoding="utf-8")
                 inv_field_name = name.lower() + name[1:]
                 if f"private {name} {inv_field_name};" not in java_src_content:
                     print(f" 🔗 Infiltrating inverse 1:1 mappedBy link into the child composition class: {src_class}")
@@ -331,8 +324,7 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                                 f"package {COMPANY}.{project_name}.entity;",
                                 f"package {COMPANY}.{project_name}.entity;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.FetchType;",
                             )
-                        with open(src_file_path, "w", encoding="utf-8") as f:
-                            f.write(java_src_content)
+                        src_file_path.write_text(java_src_content, encoding="utf-8")
 
         if "import io.jmix.core.metamodel.annotation.Composition;" not in java_tgt_content:
             java_tgt_content = java_tgt_content.replace(
@@ -357,15 +349,16 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                 + new_methods
                 + java_tgt_content[last_brace_index:]
             )
-        with open(tgt_file_path, "w", encoding="utf-8") as f:
-            f.write(java_tgt_content)
+        tgt_file_path.write_text(java_tgt_content, encoding="utf-8")
 
 
 def get_relations_from_csv(csv_path: str, target_entity_name: str) -> list[dict[str, Any]]:
     relations_list: list[dict[str, Any]] = []
-    if not os.path.exists(csv_path):
+    csv_file = Path(csv_path)
+    if not csv_file.exists():
         return relations_list
-    with open(csv_path, mode="r", encoding="utf-8") as f:
+    validate_csv_path(csv_path, ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"])
+    with csv_file.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row["source_entity"].strip().lower() == target_entity_name.lower():
@@ -381,18 +374,22 @@ def get_relations_from_csv(csv_path: str, target_entity_name: str) -> list[dict[
 
 
 def get_sorted_entities_by_dependency() -> list[str]:
-    if not os.path.exists("entities.csv"):
+    entities_path = Path("entities.csv")
+    if not entities_path.exists():
         return []
+    validate_csv_path("entities.csv", ["entity_name"])
     all_entities = set()
-    with open("entities.csv", mode="r", encoding="utf-8") as f:
+    with entities_path.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             name = row["entity_name"].strip()
             if name:
                 all_entities.add(name)
     dependencies = {ent: set() for ent in all_entities}
-    if os.path.exists("relations.csv"):
-        with open("relations.csv", mode="r", encoding="utf-8") as f:
+    relations_path = Path("relations.csv")
+    if relations_path.exists():
+        validate_csv_path("relations.csv", ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"])
+        with relations_path.open(mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 src = row["source_entity"].strip()
@@ -423,7 +420,7 @@ def get_sorted_entities_by_dependency() -> list[str]:
     for entity in sorted(list(all_entities)):
         if entity not in visited:
             visit(entity)
-    if "User" not in all_entities and os.path.exists("relations.csv"):
+    if "User" not in all_entities and relations_path.exists():
         sorted_entities.append("User")
     return sorted_entities
 
@@ -491,11 +488,9 @@ public class {name} {{
 {java_traits_methods}{java_business_methods}{java_relation_methods}}}
 """
 
-    td = PROIECT_PATH + f"/src/main/java/{company_path}/{project_name}/entity"
-    ensure_dir(td)
-    java_path = td + "/" + name + ".java"
-    write_file(java_path, java_content)
-    print("✨ Entity saved successfully in: " + java_path)
+    td = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity"
+    write_file(td / f"{name}.java", java_content)
+    print("✨ Entity saved successfully in: " + str(td / f"{name}.java"))
 
     for rel in relations_list:
         r_type = rel["type"]

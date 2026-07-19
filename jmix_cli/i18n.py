@@ -1,11 +1,11 @@
 import csv
 import http.client
 import json
-import os
 import re
+from pathlib import Path
 from typing import Any
 
-from jmix_cli.utils import COMPANY, PROIECT_PATH, append_unique, company_path, project_name
+from jmix_cli.utils import COMPANY, PROIECT_PATH, append_unique, company_path, project_name, validate_csv_path
 
 
 def ask_ollama_translation(text_to_translate: str, target_language_name: str) -> str:
@@ -40,10 +40,11 @@ def update_messages_entity(
         f"Generating dynamic parametric localization messages for exact entity {n}..."
     )
 
-    app_properties_path = project_dir + "/src/main/resources/application.properties"
+    project_root = Path(project_dir)
+    app_properties_path = project_root / "src" / "main" / "resources" / "application.properties"
     available_locales = ["en"]
-    if os.path.exists(app_properties_path):
-        with open(app_properties_path, "r", encoding="utf-8") as f:
+    if app_properties_path.exists():
+        with app_properties_path.open(encoding="utf-8") as f:
             for line in f:
                 if "jmix.core.available-locales" in line:
                     match = re.search(r"jmix\.core\.available-locales\s*=\s*(.*)", line)
@@ -55,7 +56,7 @@ def update_messages_entity(
                         ]
 
     package_path_slashes = base_package.replace(".", "/")
-    base_path = project_dir + f"/src/main/resources/{package_path_slashes}"
+    base_path = project_root / "src" / "main" / "resources" / package_path_slashes
 
     entity_traits = {
         "versioned": False,
@@ -63,9 +64,10 @@ def update_messages_entity(
         "audit_of_modification": False,
         "soft_delete": False,
     }
-    traits_csv_path = project_dir + "/traits.csv"
-    if os.path.exists(traits_csv_path):
-        with open(traits_csv_path, mode="r", encoding="utf-8") as f:
+    traits_csv_path = project_root / "traits.csv"
+    if traits_csv_path.exists():
+        validate_csv_path("traits.csv", ["entity_name", "versioned", "audit_of_creation", "audit_of_modification", "soft_delete"])
+        with traits_csv_path.open(encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 if row.get("entity_name", "").strip() == n:
@@ -92,11 +94,11 @@ def update_messages_entity(
 
     for locale in available_locales:
         if locale == "en":
-            target_path = base_path + "/messages_en.properties"
+            target_path = base_path / "messages_en.properties"
             lang_name = "English"
             primary_iso = "en"
         else:
-            target_path = base_path + f"/messages_{locale}.properties"
+            target_path = base_path / f"messages_{locale}.properties"
             iso_lang_names = {
                 "ar": "Arabic",
                 "ckb": "Central Kurdish",
@@ -233,9 +235,9 @@ def update_messages_entity(
                         f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}={translate_label_composition}"
                     )
 
-        append_unique(target_path, target_lines)
+        append_unique(str(target_path), target_lines)
         if locale == "en":
-            append_unique(base_path + "/messages.properties", target_lines)
+            append_unique(str(base_path / "messages.properties"), target_lines)
 
     print(
         f"✨ Parametric localization layout for entity '{n}' successfully compiled across available locales!"

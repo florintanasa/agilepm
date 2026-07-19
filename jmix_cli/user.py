@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 from typing import Any
 
 from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, inject_import_if_missing, project_name
@@ -6,11 +6,11 @@ from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, inject_import_if
 
 def inject_relations_into_existing_user(relations_list: list[dict[str, Any]]) -> None:
     user_java_path = (
-        PROIECT_PATH + f"/src/main/java/{company_path}/{project_name}/entity/User.java"
+        PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / "User.java"
     )
-    if not os.path.exists(user_java_path):
+    if not user_java_path.exists():
         return
-    content = open(user_java_path, "r", encoding="utf-8").read()
+    content = user_java_path.read_text(encoding="utf-8")
     modified = False
     for rel in relations_list:
         if rel["type"] != "N:1":
@@ -42,6 +42,5 @@ def inject_relations_into_existing_user(relations_list: list[dict[str, Any]]) ->
                 )
                 modified = True
     if modified:
-        with open(user_java_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        user_java_path.write_text(content, encoding="utf-8")
         print("✨ [Java] User.java has been updated with the new relationships!")

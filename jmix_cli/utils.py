@@ -3,7 +3,7 @@ import os
 import re
 from pathlib import Path
 
-PROIECT_PATH = str(Path.cwd())
+PROIECT_PATH = Path.cwd()
 
 
 def get_project_name(settings_path: Path = Path("settings.gradle")) -> str | None:

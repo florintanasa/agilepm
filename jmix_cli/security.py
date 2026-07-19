@@ -1,18 +1,20 @@
 import csv
-import os
+from pathlib import Path
 from typing import Any
 
-from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, ensure_dir, project_name, write_file
+from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, project_name, validate_csv_path, write_file
 
 
 def gen_jmix_resource_roles_from_csv() -> None:
-    roles_file = "roles.csv"
-    if not os.path.exists(roles_file):
-        print(f"[-] Error: {roles_file} configuration file not found.")
-        raise FileNotFoundError(roles_file)
+    roles_file = Path("roles.csv")
+    if not roles_file.exists():
+        print(f"[-] Error: roles.csv configuration file not found.")
+        raise FileNotFoundError("roles.csv")
+
+    validate_csv_path("roles.csv", ["name", "code", "entity_name", "ui_list", "ui_detail", "create", "read", "update", "delete"])
 
     roles_data: dict[str, dict[str, Any]] = {}
-    with open(roles_file, mode="r", encoding="utf-8") as f:
+    with roles_file.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             r_code = row["code"].strip()
@@ -96,9 +98,7 @@ public interface {class_name} {{
 {java_policies_body}}}
 """
 
-        target_dir = os.path.join(
-            PROIECT_PATH, "src", "main", "java", company_path, project_name, "security"
-        )
-        ensure_dir(target_dir)
-        file_path = os.path.join(target_dir, f"{class_name}.java")
+        target_dir = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "security"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_path = target_dir / f"{class_name}.java"
         write_file(file_path, java_content)
