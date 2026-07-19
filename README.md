@@ -250,9 +250,9 @@ python3 jmix-cli.py build-all
 ./gradlew test
 ```
 
-> [!INFO]
+> [!WARNING]  
 > If you have errors caused by Liquibase `liquibase.exception.DatabaseException: object name already exists: ` these mean you have an old database,
-> and is necessary to delete old files: `rm -rf .jmix/ build/ .gradle/`
+> and is necessary to delete the old files: `rm -rf .jmix/ build/ .gradle/`
 
 ## Demo data
 In `listener` exist a class `AgileDemoDataIniTializer` this populate the data base with values at first run.  
