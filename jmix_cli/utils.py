@@ -64,8 +64,10 @@ def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def write_file(path: str, content: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
+def write_file(path: str | Path, content: str) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
         f.write(content)
 
 
