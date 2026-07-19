@@ -95,7 +95,7 @@ def _generate_single_entity(name: str) -> None:
 
 
 def _finalize_composition_relationships() -> None:
-    print("\n[⚡] PHASE 2.5: Finalizing Composition relationships...")
+    print("\n[⚡] PHASE 1.5: Finalizing Composition relationships...")
     relations_path = Path("relations.csv")
     if not relations_path.exists():
         return
