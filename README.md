@@ -1,6 +1,7 @@
 # Agile Project Management System
 
-A Jmix 2.7.x-based full-stack application for managing agile projects with entities, relationships, and role-based access control.
+A Jmix 2.7.x-based full-stack application for managing agile projects with entities, relationships, and role-based access control.  
+This application is a demo for how to use Jmix CLI Tool. 
 
 ## Architecture Overview
 
