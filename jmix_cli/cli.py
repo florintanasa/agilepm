@@ -63,7 +63,7 @@ def _generate_single_entity(name: str) -> None:
             inject_relations_into_existing_user(relations_list)
             update_messages_entity(
                 project_dir=".",
-                base_package=COMPANY + "." + PROJECT,
+                base_package=COMPANY + "." + project_name,
                 entity_name="User",
                 traits_list=[],
                 relations_list=relations_list,
@@ -84,7 +84,7 @@ def _generate_single_entity(name: str) -> None:
             computed_traits_list = ["name"]
         update_messages_entity(
             project_dir=".",
-            base_package=COMPANY + "." + PROJECT,
+            base_package=COMPANY + "." + project_name,
             entity_name=name,
             traits_list=computed_traits_list,
             relations_list=relations_list,
@@ -445,7 +445,7 @@ def main() -> None:
                     inject_relations_into_existing_user(relations_list)
                     update_messages_entity(
                         project_dir=".",
-                        base_package=COMPANY + "." + PROJECT,
+                        base_package=COMPANY + "." + project_name,
                         entity_name="User",
                         traits_list=[],
                         relations_list=relations_list,
@@ -463,7 +463,7 @@ def main() -> None:
                     if not computed_traits_list:
                         computed_traits_list = ["name"]
                     update_messages_entity(
-                        ".", COMPANY + "." + PROJECT, ent, computed_traits_list, relations_list
+                        ".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list
                     )
         _finalize_composition_relationships()
         sys.exit(0)
@@ -505,7 +505,7 @@ def main() -> None:
                 if relations_list:
                     gen_liquibase_relations_changelog("User", relations_list)
                     inject_relations_into_existing_user(relations_list)
-                    update_messages_entity(".", COMPANY + "." + PROJECT, "User", [], relations_list)
+                    update_messages_entity(".", COMPANY + "." + project_name, "User", [], relations_list)
             else:
                 print(f"   ▶️ Building Domain Model: {ent}")
                 traits = get_traits_from_csv("traits.csv", ent)
@@ -519,7 +519,7 @@ def main() -> None:
                     computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(open("entities.csv")) if row["entity_name"].strip() == ent.strip()]
                     if not computed_traits_list:
                         computed_traits_list = ["name"]
-                    update_messages_entity(".", COMPANY + "." + PROJECT, ent, computed_traits_list, relations_list)
+                    update_messages_entity(".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list)
 
         _finalize_composition_relationships()
 
