@@ -49,6 +49,7 @@ from jmix_cli.views import (
     gen_list_view_from_csv,
     inject_detail_ui_into_existing_user,
     inject_list_ui_into_existing_user,
+    inject_nn_grid_into_inverse_entity,
 )
 from jmix_cli.security import gen_jmix_resource_roles_from_csv
 from jmix_cli.i18n import update_messages_entity
@@ -552,6 +553,14 @@ def main() -> None:
                     gen_list_view_from_csv(ent, current_fields, relations_list)
                     gen_detail_view_from_csv(ent, current_fields, relations_list)
                     _update_menu(ent)
+
+        all_relations = []
+        for ent in ordered_list:
+            rels = get_relations_from_csv("relations.csv", ent)
+            for rel in rels:
+                rel["source_entity"] = ent
+            all_relations.extend(rels)
+        inject_nn_grid_into_inverse_entity(all_relations)
 
         print("\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter...")
         gen_jmix_resource_roles_from_csv()
