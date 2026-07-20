@@ -65,14 +65,14 @@ def _inject_nn(content: str, rel: dict[str, Any]) -> str:
     field += f'    @JoinTable(name = "{join_table}",\n'
     field += f'            joinColumns = @JoinColumn(name = "{src_fk}"),\n'
     field += f'            inverseJoinColumns = @JoinColumn(name = "{tgt_fk}"))\n'
-    field += f"    private Collection<{tgt_class}> {f_name};\n\n"
+    field += f"    private List<{tgt_class}> {f_name};\n\n"
     caps = f_name[0].upper() + f_name[1:] if len(f_name) > 1 else f_name.upper()
-    methods = f"    public Collection<{tgt_class}> get{caps}() {{\n        return {f_name};\n    }}\n\n"
-    methods += f"    public void set{caps}(Collection<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+    methods = f"    public List<{tgt_class}> get{caps}() {{\n        return {f_name};\n    }}\n\n"
+    methods += f"    public void set{caps}(List<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
     content = _ensure_import(content, "jakarta.persistence.ManyToMany")
     content = _ensure_import(content, "jakarta.persistence.JoinTable")
     content = _ensure_import(content, "jakarta.persistence.JoinColumn")
-    content = _ensure_import(content, "java.util.Collection")
+    content = _ensure_import(content, "java.util.List")
     last_brace = content.rfind("}")
     if last_brace == -1:
         return content
@@ -109,16 +109,16 @@ def _inject_inverse_for_relation(source_name: str, rel: dict[str, Any]) -> None:
         tgt_file_path.write_text(java_tgt_content, encoding="utf-8")
     elif r_type == "N:N":
         inv_field_name = source_name.lower() + "s" if not source_name.endswith("s") else source_name.lower()
-        check = f"private Collection<User> {inv_field_name};"
+        check = f"private List<{source_name}> {inv_field_name};"
         if check in java_tgt_content:
             return
         print(f"   -> Injecting inverse N:N in {tgt_class}")
-        inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private Collection<User> {inv_field_name};\n\n'
+        inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{source_name}> {inv_field_name};\n\n'
         inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
-        inv_methods = f"    public Collection<User> get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
-        inv_methods += f"    public void set{inv_caps}(Collection<User> {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
+        inv_methods = f"    public List<{source_name}> get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
+        inv_methods += f"    public void set{inv_caps}(List<{source_name}> {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
         java_tgt_content = _ensure_import(java_tgt_content, "jakarta.persistence.ManyToMany")
-        java_tgt_content = _ensure_import(java_tgt_content, "java.util.Collection")
+        java_tgt_content = _ensure_import(java_tgt_content, "java.util.List")
         last_brace = java_tgt_content.rfind("}")
         if last_brace == -1:
             return
