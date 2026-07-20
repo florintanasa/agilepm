@@ -304,11 +304,11 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
             src_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{src_class}.java"
             if src_file_path.exists():
                 java_src_content = src_file_path.read_text(encoding="utf-8")
-                inv_field_name = name.lower() + name[1:]
+                inv_field_name = name[0].lower() + name[1:]
                 if f"private {name} {inv_field_name};" not in java_src_content:
                     print(f" 🔗 Infiltrating inverse 1:1 mappedBy link into the child composition class: {src_class}")
                     inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {name} {inv_field_name};\n\n'
-                    inv_caps = inv_field_name.upper() + inv_field_name[1:]
+                    inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
                     inv_methods = f"    public {name} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
                     inv_methods += f"    public void set{inv_caps}({name} {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
                     src_last_brace = java_src_content.rfind("}")
@@ -491,8 +491,3 @@ public class {name} {{
     td = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity"
     write_file(td / f"{name}.java", java_content)
     print("✨ Entity saved successfully in: " + str(td / f"{name}.java"))
-
-    for rel in relations_list:
-        r_type = rel["type"]
-        if r_type.startswith("COMPOSITION_"):
-            _inject_composition_into_parent(name, [rel])
