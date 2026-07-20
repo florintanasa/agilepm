@@ -197,12 +197,13 @@ def gen_detail_view_from_csv(
             xml_relation_data_containers += "                </query>\n"
             xml_relation_data_containers += "            </loader>\n"
             xml_relation_data_containers += "        </collection>\n"
-            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc" multiSelect="true">\n'
+            xml_form_components += f'            <multiSelectComboBoxPicker id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
             xml_form_components += "                <actions>\n"
             xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
             xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
             xml_form_components += "                </actions>\n"
-            xml_form_components += "            </entityComboBox>\n"
+            xml_form_components += "            </multiSelectComboBoxPicker>\n"
 
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
@@ -392,7 +393,7 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) ->
         return
     xml_content = xml_path.read_text(encoding="utf-8")
     accumulated_containers = ""
-    accumulated_components = ""
+    accumulated_form_components = ""
     modified = False
     for rel in relations_list:
         rel_type = rel["type"].strip().upper()
@@ -419,35 +420,84 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) ->
         component_id = f"{f_name}Field"
         if (
             f'id="{component_id}"' not in xml_content
-            and f'id="{component_id}"' not in accumulated_components
+            and f'id="{component_id}"' not in accumulated_form_components
         ):
             if rel_type == "N:N":
-                ui_block = f'            <entityComboBox id="{component_id}" property="{f_name}" itemsContainer="{container_id}" multiSelect="true">\n'
-                ui_block += "                <actions>\n"
-                ui_block += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
-                ui_block += '                    <action id="entityClearAction" type="entity_clear"/>\n'
-                ui_block += "                </actions>\n"
-                ui_block += "            </entityComboBox>\n"
+                ui_block = f'            <multiSelectComboBoxPicker id="{component_id}" property="{f_name}" itemsContainer="{container_id}">\n'
             else:
                 ui_block = f'            <entityComboBox id="{component_id}" property="{f_name}" itemsContainer="{container_id}">\n'
-                ui_block += "                <actions>\n"
-                ui_block += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
-                ui_block += '                    <action id="entityOpenAction" type="entity_open"/>\n'
-                ui_block += '                    <action id="entityClearAction" type="entity_clear"/>\n'
-                ui_block += "                </actions>\n"
+            ui_block += "                <actions>\n"
+            ui_block += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            ui_block += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+            ui_block += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+            ui_block += "                </actions>\n"
+            if rel_type == "N:N":
+                ui_block += "            </multiSelectComboBoxPicker>\n"
+            else:
                 ui_block += "            </entityComboBox>\n"
-            accumulated_components += ui_block
+            accumulated_form_components += ui_block
             modified = True
     if modified:
         if accumulated_containers and "</data>" in xml_content:
             xml_content = xml_content.replace(
                 "</data>", f"{accumulated_containers}    </data>"
             )
-        if accumulated_components and "</formLayout>" in xml_content:
+        if accumulated_form_components and "</formLayout>" in xml_content:
             xml_content = xml_content.replace(
-                "</formLayout>", f"{accumulated_components}        </formLayout>"
+                "</formLayout>", f"{accumulated_form_components}        </formLayout>"
             )
         write_file(xml_path, xml_content)
         print(
             "✨ [UI-Detail] user-detail-view.xml successfully updated dynamically!"
         )
+
+
+def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> None:
+    for rel in relations_list:
+        if rel["type"].strip().upper() != "N:N":
+            continue
+        source_name = rel.get("source_entity") or ""
+        if not source_name:
+            continue
+        f_name = rel["field"].strip()
+        tgt_class = rel["target"].strip()
+        tgt_lower = tgt_class.lower()
+        inv_field_name = source_name.lower() + "s" if not source_name.lower().endswith("s") else source_name.lower()
+        xml_path = (
+            PROIECT_PATH
+            / "src"
+            / "main"
+            / "resources"
+            / company_path
+            / project_name
+            / "view"
+            / tgt_lower
+            / f"{tgt_lower}-detail-view.xml"
+        )
+        if not xml_path.exists():
+            continue
+        xml_content = xml_path.read_text(encoding="utf-8")
+        grid_id = f"{inv_field_name}DataGrid"
+        if f'id="{grid_id}"' in xml_content:
+            continue
+        print(f" 🖥️ Dynamic injecting N:N dataGrid in: {tgt_class} Detail View")
+        container_id = f"{source_name.lower()}sDc"
+        container_block = f'        <collection id="{container_id}" class="{COMPANY}.{project_name}.entity.{source_name}">\n'
+        container_block += '            <fetchPlan extends="_base"/>\n'
+        container_block += f'            <loader id="{source_name.lower()}sDl">\n'
+        container_block += "                <query>\n"
+        container_block += f"                    <![CDATA[select e from {source_name} e]]>\n"
+        container_block += "                </query>\n"
+        container_block += "            </loader>\n"
+        container_block += "        </collection>\n"
+        grid_block = f"        <dataGrid id=\"{grid_id}\" dataContainer=\"{container_id}\" selectionMode=\"MULTI\">\n"
+        grid_block += "            <columns>\n"
+        grid_block += f"                <column property=\"id\"/>\n"
+        grid_block += "            </columns>\n"
+        grid_block += "        </dataGrid>\n"
+        if "</data>" in xml_content:
+            xml_content = xml_content.replace("</data>", f"{container_block}    </data>")
+        if "</formLayout>" in xml_content:
+            xml_content = xml_content.replace("</formLayout>", f"</formLayout>\n{grid_block}")
+        write_file(xml_path, xml_content)
+        print(f"✨ [UI-Detail] {tgt_lower}-detail-view.xml successfully updated with N:N grid!")
