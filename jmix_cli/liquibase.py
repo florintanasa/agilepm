@@ -171,7 +171,7 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
     </changeSet>"""
         elif rel["type"] == "N:N":
             join_table = f"{src_table_for_join}_{tgt_table}_LINK"
-            src_fk = f"{src_table}_ID"
+            src_fk = f"{src_table_for_join}_ID"
             tgt_fk = f"{tgt_table}_ID"
             xml_fk_content += f"""
     <changeSet id="{timestamp_id}-create-nn-{join_table.lower()}" author="{project_name}">
