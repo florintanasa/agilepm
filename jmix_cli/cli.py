@@ -35,6 +35,7 @@ from pathlib import Path
 
 from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, validate_csv_path
 from jmix_cli.entity import (
+    _inject_composition_into_parent,
     get_entities_from_csv,
     get_relations_from_csv,
     get_sorted_entities_by_dependency,
@@ -459,12 +460,18 @@ def main() -> None:
                     gen_liquibase_changelog_from_csv(ent, fields_list, traits)
                     if relations_list:
                         gen_liquibase_relations_changelog(ent, relations_list)
-                    computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(open("entities.csv")) if row["entity_name"].strip() == ent.strip()]
+                    computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
                     if not computed_traits_list:
                         computed_traits_list = ["name"]
                     update_messages_entity(
                         ".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list
                     )
+        print("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+        for ent in ordered_list:
+            relations_list = get_relations_from_csv("relations.csv", ent)
+            composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
+            if composition_rels:
+                _inject_composition_into_parent(ent, composition_rels)
         _finalize_composition_relationships()
         sys.exit(0)
 
@@ -516,10 +523,17 @@ def main() -> None:
                     gen_liquibase_changelog_from_csv(ent, fields_list, traits)
                     if relations_list:
                         gen_liquibase_relations_changelog(ent, relations_list)
-                    computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(open("entities.csv")) if row["entity_name"].strip() == ent.strip()]
+                    computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
                     if not computed_traits_list:
                         computed_traits_list = ["name"]
                     update_messages_entity(".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list)
+
+        print("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+        for ent in ordered_list:
+            relations_list = get_relations_from_csv("relations.csv", ent)
+            composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
+            if composition_rels:
+                _inject_composition_into_parent(ent, composition_rels)
 
         _finalize_composition_relationships()
 
