@@ -29,6 +29,11 @@ def gen_list_view_from_csv(
                 f'                <property name="{f_name}" fetchPlan="_base"/>\n'
             )
             xml_columns += f'                <column property="{f_name}"/>\n'
+        elif rel["type"] == "N:N":
+            f_name = rel["field"]
+            xml_fetch_plan_properties += (
+                f'                <property name="{f_name}" fetchPlan="_base"/>\n'
+            )
 
     xml_fetch_plan_block = ""
     if xml_fetch_plan_properties:
@@ -176,6 +181,28 @@ def gen_detail_view_from_csv(
             xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
             xml_form_components += "                </actions>\n"
             xml_form_components += "            </entityComboBox>\n"
+        elif rel["type"] == "N:N":
+            f_name = rel["field"]
+            tgt_class = rel["target"]
+            tgt_lower = tgt_class.lower()
+            xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
+            xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
+            xml_relation_data_containers += (
+                f'            <loader id="{tgt_lower}sDl">\n'
+            )
+            xml_relation_data_containers += "                <query>\n"
+            xml_relation_data_containers += (
+                f"                   <![CDATA[select e from {tgt_class} e]]>\n"
+            )
+            xml_relation_data_containers += "                </query>\n"
+            xml_relation_data_containers += "            </loader>\n"
+            xml_relation_data_containers += "        </collection>\n"
+            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc" multiSelect="true">\n'
+            xml_form_components += "                <actions>\n"
+            xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+            xml_form_components += "                </actions>\n"
+            xml_form_components += "            </entityComboBox>\n"
 
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
@@ -315,20 +342,27 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> N
     xml_content = xml_path.read_text(encoding="utf-8")
     modified = False
     for rel in relations_list:
-        if rel["type"] != "N:1":
+        rel_type = rel["type"].strip().upper()
+        if rel_type not in {"N:1", "1:1", "N:N"}:
             continue
         f_name = rel["field"]
         if (
             f'name="{f_name}"' not in xml_content
-            and '<fetchPlan extends="_base">' in xml_content
+            and ('<fetchPlan extends="_base">' in xml_content or '<fetchPlan extends="_base"/>' in xml_content)
         ):
             fp_prop = f'                <property name="{f_name}" fetchPlan="_base"/>\n'
-            xml_content = xml_content.replace(
-                '<fetchPlan extends="_base">',
-                f'<fetchPlan extends="_base">\n{fp_prop}',
-            )
+            if '<fetchPlan extends="_base"/>' in xml_content:
+                xml_content = xml_content.replace(
+                    '<fetchPlan extends="_base"/>',
+                    f'<fetchPlan extends="_base">\n{fp_prop}            </fetchPlan>',
+                )
+            else:
+                xml_content = xml_content.replace(
+                    '<fetchPlan extends="_base">',
+                    f'<fetchPlan extends="_base">\n{fp_prop}',
+                )
             modified = True
-        if (
+        if rel_type in {"N:1", "1:1"} and (
             f'property="{f_name}"' not in xml_content
             and "</columns>" in xml_content
         ):
@@ -362,7 +396,7 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) ->
     modified = False
     for rel in relations_list:
         rel_type = rel["type"].strip().upper()
-        if rel_type != "N:1":
+        if rel_type not in {"N:1", "1:1", "N:N"}:
             continue
         f_name = rel["field"].strip()
         tgt_class = rel["target"].strip()
@@ -387,7 +421,21 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) ->
             f'id="{component_id}"' not in xml_content
             and f'id="{component_id}"' not in accumulated_components
         ):
-            ui_block = f'            <entityComboBox id="{component_id}" property="{f_name}" itemsContainer="{container_id}"/>\n'
+            if rel_type == "N:N":
+                ui_block = f'            <entityComboBox id="{component_id}" property="{f_name}" itemsContainer="{container_id}" multiSelect="true">\n'
+                ui_block += "                <actions>\n"
+                ui_block += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+                ui_block += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+                ui_block += "                </actions>\n"
+                ui_block += "            </entityComboBox>\n"
+            else:
+                ui_block = f'            <entityComboBox id="{component_id}" property="{f_name}" itemsContainer="{container_id}">\n'
+                ui_block += "                <actions>\n"
+                ui_block += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+                ui_block += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+                ui_block += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+                ui_block += "                </actions>\n"
+                ui_block += "            </entityComboBox>\n"
             accumulated_components += ui_block
             modified = True
     if modified:
@@ -401,5 +449,5 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) ->
             )
         write_file(xml_path, xml_content)
         print(
-            "✨ [UI-Detail] user-detail-view.xml successfully updated with fields!"
+            "✨ [UI-Detail] user-detail-view.xml successfully updated dynamically!"
         )
