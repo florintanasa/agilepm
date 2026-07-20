@@ -108,6 +108,7 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
 
     timestamp_id = datetime.now().strftime("%Y%m%d%H%M%S")
     src_table = name.upper()
+    src_table_for_join = src_table
     xml_fk_content = ""
 
     for rel in relations_list:
@@ -169,7 +170,7 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
                                   referencedColumnNames="ID"/>
     </changeSet>"""
         elif rel["type"] == "N:N":
-            join_table = f"{src_table}_{tgt_table}_LINK"
+            join_table = f"{src_table_for_join}_{tgt_table}_LINK"
             src_fk = f"{src_table}_ID"
             tgt_fk = f"{tgt_table}_ID"
             xml_fk_content += f"""
