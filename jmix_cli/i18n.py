@@ -7,8 +7,43 @@ from typing import Any
 
 from jmix_cli.utils import COMPANY, PROIECT_PATH, append_unique, company_path, project_name, validate_csv_path
 
+_CACHE_FILE = Path(".ollama_translation_cache.json")
+_translation_cache: dict[str, str] = {}
+_cache_loaded = False
+
+
+def _load_cache() -> None:
+    global _cache_loaded, _translation_cache
+    if _cache_loaded:
+        return
+    if _CACHE_FILE.exists():
+        try:
+            _translation_cache = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            _translation_cache = {}
+    _cache_loaded = True
+
+
+def _persist_cache() -> None:
+    try:
+        _CACHE_FILE.write_text(
+            json.dumps(_translation_cache, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _cache_key(text: str, target_language_name: str) -> str:
+    return f"{target_language_name}:{text}"
+
 
 def ask_ollama_translation(text_to_translate: str, target_language_name: str) -> str:
+    _load_cache()
+    key = _cache_key(text_to_translate, target_language_name)
+    if key in _translation_cache:
+        return _translation_cache[key]
+
     prompt = (
         f"Translate the following software UI label from English into {target_language_name}. "
         f"Return ONLY the translated string, without quotes, explanations, or introductory text. "
@@ -26,7 +61,9 @@ def ask_ollama_translation(text_to_translate: str, target_language_name: str) ->
             data = json.loads(response.read().decode("utf-8"))
             translated_text = data.get("response", "").strip()
             translated_text = translated_text.replace('"', "").replace("'", "")
-            return translated_text if translated_text else text_to_translate
+            result = translated_text if translated_text else text_to_translate
+            _translation_cache[key] = result
+            return result
     except Exception as e:
         print(f"[-] Ollama translation warning: {e}. Falling back to English.")
     return text_to_translate
@@ -242,3 +279,4 @@ def update_messages_entity(
     print(
         f"✨ Parametric localization layout for entity '{n}' successfully compiled across available locales!"
     )
+    _persist_cache()
