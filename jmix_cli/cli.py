@@ -61,7 +61,7 @@ def _generate_single_entity(name: str) -> None:
         relations_list = get_relations_from_csv("relations.csv", "User")
         if relations_list:
             gen_liquibase_relations_changelog("User", relations_list)
-            inject_relations_into_existing_user(relations_list)
+            inject_relations_into_existing_user(name, relations_list)
             update_messages_entity(
                 project_dir=".",
                 base_package=COMPANY + "." + project_name,
@@ -443,7 +443,7 @@ def main() -> None:
                 relations_list = get_relations_from_csv("relations.csv", "User")
                 if relations_list:
                     gen_liquibase_relations_changelog("User", relations_list)
-                    inject_relations_into_existing_user(relations_list)
+                    inject_relations_into_existing_user("User", relations_list)
                     update_messages_entity(
                         project_dir=".",
                         base_package=COMPANY + "." + project_name,
@@ -511,7 +511,7 @@ def main() -> None:
                 relations_list = get_relations_from_csv("relations.csv", "User")
                 if relations_list:
                     gen_liquibase_relations_changelog("User", relations_list)
-                    inject_relations_into_existing_user(relations_list)
+                    inject_relations_into_existing_user("User", relations_list)
                     update_messages_entity(".", COMPANY + "." + project_name, "User", [], relations_list)
             else:
                 print(f"   ▶️ Building Domain Model: {ent}")
