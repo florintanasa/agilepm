@@ -4,7 +4,6 @@ A Jmix 2.7.x-based full-stack application for managing agile projects with entit
 This application is a demo for how to use Jmix CLI Tool. 
 
 ## Architecture Overview 
-#### Exist some diferences from relations.csv and diagram - I will correct when I fihished my tests
 
 ```mermaid
 classDiagram
@@ -14,20 +13,28 @@ classDiagram
         +UUID id
         +String name
         +LocalDate startDate
+        +List<Milestone> milestones
     }
     class Milestone {
         +UUID id
         +String title
         +LocalDate targetDate
+        +Project project
     }
     class Task {
         +UUID id
         +String subject
         +LocalDate dueDate
+        +Milestone milestone
+        +User assignee
+        +Priority priority
+        +List<TaskComment> comments
     }
     class TaskComment {
         +UUID id
         +String content
+        +Task task
+        +User author
     }
     class Priority {
         +UUID id
@@ -38,10 +45,12 @@ classDiagram
         +String username
         +String firstName
         +String lastName
+        +Team team
     }
     class UserProfile {
         +UUID id
         +String phoneNumber
+        +User user
     }
     class UserConfig {
         +UUID id
@@ -50,23 +59,25 @@ classDiagram
     class Team {
         +UUID id
         +String name
+        +List<Client> clients
     }
     class Client {
         +UUID id
         +String companyName
     }
 
-    Project "1" *-- "N" Milestone : COMPOSITION_1_N
-    Milestone "1" --> "N" Task : Association 1_N
-    Task "1" *-- "N" TaskComment : COMPOSITION_1_N
-    TaskComment "N" --> "1" Task : Owns task link
-    Task "N" --> "1" Priority : Association N_1
-    Task "N" --> "1" User : Association N_1 (assignee)
-    TaskComment "N" --> "1" User : Association N_1 (author)
-    User "N" --> "1" Team : Association N_1
-    UserProfile "1" --> "1" User : Association 1_1
-    UserProfile "1" *-- "1" UserConfig : COMPOSITION_1_1
-    Team "N" ..> "N" Client : Many_To_Many N_N
+    Project "1" *-- "N" Milestone : COMPOSITION
+    Milestone "N" --> "1" Project : FK project_id
+    Task "N" --> "1" Milestone : FK milestone_id
+    Task "1" *-- "N" TaskComment : COMPOSITION
+    TaskComment "N" --> "1" Task : FK task_id
+    Task "N" --> "1" User : FK assignee_id
+    Task "N" --> "1" Priority : FK priority_id
+    TaskComment "N" --> "1" User : FK author_id
+    User "N" --> "1" Team : FK team_id
+    UserProfile "1" --> "1" User : FK user_id
+    UserProfile "1" *-- "1" UserConfig : COMPOSITION
+    Team "N" ..> "N" Client : TEAM_CLIENT_LINK
 ```
 
 ## Domain Model
