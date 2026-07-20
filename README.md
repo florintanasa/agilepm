@@ -4,7 +4,7 @@ A Jmix 2.7.x-based full-stack application for managing agile projects with entit
 This application is a demo for how to use Jmix CLI Tool. 
 
 ## Architecture Overview
-
+#### Exist some diferences from relations.csv and diagram - I will correct when I fihished my tests
 ```mermaid
 classDiagram
     direction LR
