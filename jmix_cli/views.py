@@ -7,7 +7,6 @@ from jmix_cli.utils import (
     PROIECT_PATH,
     append_unique,
     company_path,
-    inject_import_if_missing,
     project_name,
     write_file,
 )

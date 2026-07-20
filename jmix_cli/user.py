@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any
 
-from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, inject_import_if_missing, project_name
+from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, project_name
 
 
 def inject_relations_into_existing_user(relations_list: list[dict[str, Any]]) -> None:
