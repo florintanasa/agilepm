@@ -167,7 +167,7 @@ def _finalize_composition_relationships() -> None:
                     )
                 tgt_file_path.write_text(tgt_content, encoding="utf-8")
 
-            timestamp_id_fk = datetime.now().strftime("%Y%m%d%H%M%S")
+            stable_fk_id = f"{src_class.lower()}-add-fk-{f_name}"
             fk_changelog = f"""<?xml version="1.0" encoding="UTF-8" ?>
 <databaseChangeLog
     xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
@@ -176,7 +176,7 @@ def _finalize_composition_relationships() -> None:
                       http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
     objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS"
 >
-    <changeSet id="{timestamp_id_fk}-add-fk-{f_name}" author="{project_name}">
+    <changeSet id="{stable_fk_id}" author="{project_name}">
         <addForeignKeyConstraint baseTableName="{src_class.upper()}"
                                   baseColumnNames="{f_name.upper()}_ID"
                                   constraintName="FK_{src_class.upper()}_ON_{f_name}"
@@ -189,7 +189,7 @@ def _finalize_composition_relationships() -> None:
             current_month = datetime.now().strftime("%m")
             fk_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog" / current_year / current_month
             fk_dir.mkdir(parents=True, exist_ok=True)
-            fk_file = fk_dir / f"{timestamp_id_fk}-03-fk-{src_class.lower()}.xml"
+            fk_file = fk_dir / f"03-fk-{src_class.lower()}.xml"
             fk_file.write_text(fk_changelog, encoding="utf-8")
             print(f" 🔗 Added FK constraint changelog: {fk_file}")
     print("\n✅ Entity generation completed!")

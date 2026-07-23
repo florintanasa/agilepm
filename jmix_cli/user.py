@@ -58,20 +58,27 @@ def _inject_nn(content: str, rel: dict[str, Any]) -> str:
     tgt_class = rel["target"]
     if f"private List<{tgt_class}> {f_name};" in content or f"private Collection<{tgt_class}> {f_name};" in content:
         return content
-    join_table = f"USER_{tgt_class.upper()}_LINK"
-    src_fk = "USER_ID"
-    tgt_fk = f"{tgt_class.upper()}_ID"
-    field = "    @ManyToMany\n"
-    field += f'    @JoinTable(name = "{join_table}",\n'
-    field += f'            joinColumns = @JoinColumn(name = "{src_fk}"),\n'
-    field += f'            inverseJoinColumns = @JoinColumn(name = "{tgt_fk}"))\n'
+    ownership = rel.get("ownership", "owning")
+    is_owning = ownership in ("owning", "both-owning")
+    if is_owning:
+        join_table = f"USER_{tgt_class.upper()}_LINK"
+        src_fk = "USER_ID"
+        tgt_fk = f"{tgt_class.upper()}_ID"
+        field = "    @ManyToMany\n"
+        field += f'    @JoinTable(name = "{join_table}",\n'
+        field += f'            joinColumns = @JoinColumn(name = "{src_fk}"),\n'
+        field += f'            inverseJoinColumns = @JoinColumn(name = "{tgt_fk}"))\n'
+    else:
+        inv_field_name = "users"
+        field = f'    @ManyToMany(mappedBy = "{inv_field_name}")\n'
     field += f"    private List<{tgt_class}> {f_name};\n\n"
     caps = f_name[0].upper() + f_name[1:] if len(f_name) > 1 else f_name.upper()
     methods = f"    public List<{tgt_class}> get{caps}() {{\n        return {f_name};\n    }}\n\n"
     methods += f"    public void set{caps}(List<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
     content = _ensure_import(content, "jakarta.persistence.ManyToMany")
-    content = _ensure_import(content, "jakarta.persistence.JoinTable")
-    content = _ensure_import(content, "jakarta.persistence.JoinColumn")
+    if is_owning:
+        content = _ensure_import(content, "jakarta.persistence.JoinTable")
+        content = _ensure_import(content, "jakarta.persistence.JoinColumn")
     content = _ensure_import(content, "java.util.List")
     last_brace = content.rfind("}")
     if last_brace == -1:
@@ -108,16 +115,28 @@ def _inject_inverse_for_relation(source_name: str, rel: dict[str, Any]) -> None:
         java_tgt_content = java_tgt_content[:last_brace] + inv_field + inv_methods + java_tgt_content[last_brace:]
         tgt_file_path.write_text(java_tgt_content, encoding="utf-8")
     elif r_type == "N:N":
+        ownership = rel.get("ownership", "owning")
         inv_field_name = source_name.lower() + "s" if not source_name.endswith("s") else source_name.lower()
         check = f"private List<{source_name}> {inv_field_name};"
         if check in java_tgt_content:
             return
         print(f"   -> Injecting inverse N:N in {tgt_class}")
-        inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{source_name}> {inv_field_name};\n\n'
+        if ownership == "owning":
+            inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{source_name}> {inv_field_name};\n\n'
+        else:
+            join_table = f"USER_{tgt_class.upper()}_LINK"
+            inv_field = f'    @ManyToMany\n'
+            inv_field += f'    @JoinTable(name = "{join_table}",\n'
+            inv_field += f'            joinColumns = @JoinColumn(name = "{tgt_class.upper()}_ID"),\n'
+            inv_field += f'            inverseJoinColumns = @JoinColumn(name = "USER_ID"))\n'
+            inv_field += f'    private List<{source_name}> {inv_field_name};\n\n'
         inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
         inv_methods = f"    public List<{source_name}> get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
         inv_methods += f"    public void set{inv_caps}(List<{source_name}> {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
         java_tgt_content = _ensure_import(java_tgt_content, "jakarta.persistence.ManyToMany")
+        if ownership != "owning":
+            java_tgt_content = _ensure_import(java_tgt_content, "jakarta.persistence.JoinTable")
+            java_tgt_content = _ensure_import(java_tgt_content, "jakarta.persistence.JoinColumn")
         java_tgt_content = _ensure_import(java_tgt_content, "java.util.List")
         last_brace = java_tgt_content.rfind("}")
         if last_brace == -1:
