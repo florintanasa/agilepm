@@ -209,6 +209,7 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
                         tgt_file_path.write_text(java_tgt_content, encoding="utf-8")
 
         elif rel["type"] == "N:N":
+            ownership = rel.get("ownership", "owning")
             f_name = rel["field"]
             tgt_class = rel["target"]
             join_table_name = f"{name.upper()}_{tgt_class.upper()}_LINK"
@@ -233,7 +234,20 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
                 java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
                 if f"private List<{name}> {inv_field_name};" not in java_tgt_content:
                     print(f" 🔗 Injecting inverse N:N association into the target class: {tgt_class}")
-                    inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{name}> {inv_field_name};\n\n'
+                    if ownership == "both-owning":
+                        # both-owning: target also has JoinTable - same table name as source
+                        join_table_name = f"{name.upper()}_{tgt_class.upper()}_LINK"
+                        tgt_src_fk = f"{tgt_class.upper()}_ID"
+                        tgt_tgt_fk = f"{name.upper()}_ID"
+                        inv_field = f'    @ManyToMany\n'
+                        inv_field += f'    @JoinTable(name = "{join_table_name}",\n'
+                        inv_field += f'            joinColumns = @JoinColumn(name = "{tgt_src_fk}"),\n'
+                        inv_field += f'            inverseJoinColumns = @JoinColumn(name = "{tgt_tgt_fk}"))\n'
+                        java_tgt_content = inject_import_if_missing(java_tgt_content, "jakarta.persistence.JoinTable")
+                        java_tgt_content = inject_import_if_missing(java_tgt_content, "jakarta.persistence.JoinColumn")
+                    else:
+                        inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n'
+                    inv_field += f"    private List<{name}> {inv_field_name};\n\n"
                     inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
                     inv_methods = f"    public List<{name}> get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
                     inv_methods += f"    public void set{inv_caps}(List<{name}> {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
@@ -357,19 +371,27 @@ def get_relations_from_csv(csv_path: str, target_entity_name: str) -> list[dict[
     csv_file = Path(csv_path)
     if not csv_file.exists():
         return relations_list
-    validate_csv_path(csv_path, ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"])
+    # Validate headers - ownership is optional
     with csv_file.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        fieldnames = reader.fieldnames or []
+        required = ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"]
+        for req in required:
+            if req not in fieldnames:
+                print(f" ! Error: Missing column '{req}' in relations.csv")
+                return relations_list
         for row in reader:
             if row["source_entity"].strip().lower() == target_entity_name.lower():
-                relations_list.append(
-                    {
-                        "type": row["relation_type"].strip(),
-                        "target": row["target_entity"].strip(),
-                        "field": row["field_name"].strip(),
-                        "mandatory": row["mandatory"].strip().lower() == "true",
-                    }
-                )
+                rel_dict = {
+                    "type": row["relation_type"].strip(),
+                    "target": row["target_entity"].strip(),
+                    "field": row["field_name"].strip(),
+                    "mandatory": row["mandatory"].strip().lower() == "true",
+                }
+                # Add ownership if present
+                if "ownership" in fieldnames and row.get("ownership"):
+                    rel_dict["ownership"] = row["ownership"].strip()
+                relations_list.append(rel_dict)
     return relations_list
 
 

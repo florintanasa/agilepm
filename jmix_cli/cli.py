@@ -50,6 +50,7 @@ from jmix_cli.views import (
     inject_detail_ui_into_existing_user,
     inject_list_ui_into_existing_user,
     inject_nn_grid_into_inverse_entity,
+    inject_nn_datagrid_into_source_entity,
 )
 from jmix_cli.security import gen_jmix_resource_roles_from_csv
 from jmix_cli.i18n import update_messages_entity
@@ -568,6 +569,7 @@ def main() -> None:
                 rel["source_entity"] = ent
             all_relations.extend(rels)
         inject_nn_grid_into_inverse_entity(all_relations)
+        inject_nn_datagrid_into_source_entity(all_relations)
 
         print("\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter...")
         gen_jmix_resource_roles_from_csv()

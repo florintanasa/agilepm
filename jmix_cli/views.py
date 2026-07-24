@@ -458,15 +458,24 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         if rel["type"].strip().upper() != "N:N":
             continue
         source_name = rel.get("source_entity") or ""
+
+def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> None:
+    for rel in relations_list:
+        if rel["type"].strip().upper() != "N:N":
+            continue
+        source_name = rel.get("source_entity") or ""
         if not source_name:
             continue
-        f_name = rel["field"].strip()  # owning side field (e.g., "clients" in Team)
+        f_name = rel["field"].strip()
         tgt_class = rel["target"].strip()
         tgt_lower = tgt_class.lower()
+        ownership = rel.get("ownership", "owning")
         
+        # For inverse ownership, source is inverse side, target is owning - skip (no UI needed for owning side here)
+        if ownership == "inverse":
+            continue
+            
         # Determine inverse field name in target entity
-        # For N:N, if source has field "clients", target usually has "teams" 
-        # We need to read this from the generated entity or infer it
         inv_field_name = _infer_inverse_n_n_field(tgt_class, source_name)
         if not inv_field_name:
             continue
@@ -490,29 +499,44 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
             continue
         print(f" 🖥️ Dynamic injecting N:N dataGrid in: {tgt_class} Detail View")
 
-        # Build column definitions - read from entities.csv or use default for User
         column_props = _get_property_columns(source_name)
 
         container_id = f"{inv_field_name}Dc"
-        # Use property-based collection (inverse side)
         container_block = f'            <collection id="{container_id}" property="{inv_field_name}"/>\n'
-        grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI">\n'
-        grid_block += "            <columns>\n"
-        for col in column_props:
-            grid_block += f'                <column property="{col}"/>\n'
-        grid_block += "            </columns>\n"
-        grid_block += "        </dataGrid>\n"
+        
+        if ownership == "both-owning":
+            buttons_block = f'        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
+            buttons_block += f'            <button action="{grid_id}.add"/>\n'
+            buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
+            buttons_block += "        </hbox>\n"
+            grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{container_id}"\n                      width="100%" maxHeight="15rem">\n'
+            grid_block += "            <actions>\n"
+            grid_block += '                <action id="add" type="list_add"/>\n'
+            grid_block += '                <action id="exclude" type="list_exclude"/>\n'
+            grid_block += "            </actions>\n"
+            grid_block += "            <columns>\n"
+            for col in column_props:
+                grid_block += f'                <column property="{col}"/>\n'
+            grid_block += "            </columns>\n"
+            grid_block += "        </dataGrid>\n"
+        else:
+            buttons_block = ""
+            grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
+            grid_block += "            <columns>\n"
+            for col in column_props:
+                grid_block += f'                <column property="{col}"/>\n'
+            grid_block += "            </columns>\n"
+            grid_block += "        </dataGrid>\n"
 
-        # Inject collection inside instance element
         if f'id="{tgt_lower}Dc"' in xml_content and "</instance>" in xml_content:
             xml_content = xml_content.replace(
                 f'<loader id="{tgt_lower}Dl"/>',
                 f'<loader id="{tgt_lower}Dl"/>\n{container_block}'
             )
             xml_content = xml_content.replace('</instance>\n        </data>', f'        </instance>\n    </data>')
-        # Inject grid after formLayout
         if "</formLayout>" in xml_content:
-            xml_content = xml_content.replace("</formLayout>", f"</formLayout>\n{grid_block}")
+            replacement = f"</formLayout>\n{buttons_block}{grid_block}"
+            xml_content = xml_content.replace("</formLayout>", replacement)
         write_file(xml_path, xml_content)
 
 
@@ -582,3 +606,86 @@ def _get_property_columns(entity_name: str) -> list[str]:
             columns.append(field.get("name", ""))
     # If no string fields found, use id
     return columns if columns else ["id"]
+
+
+
+
+
+def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) -> None:
+    """For both-owning: inject dataGrid with actions in source entity detail view."""
+    import re
+    for rel in relations_list:
+        if rel["type"].strip().upper() != "N:N":
+            continue
+        ownership = rel.get("ownership", "owning")
+        if ownership != "both-owning":
+            continue
+            
+        source_name = rel.get("source_entity") or ""
+        if not source_name:
+            continue
+        f_name = rel["field"].strip()
+        tgt_class = rel["target"].strip()
+        
+        source_lower = source_name.lower()
+        
+        xml_path = (
+            PROIECT_PATH
+            / "src"
+            / "main"
+            / "resources"
+            / company_path
+            / project_name
+            / "view"
+            / source_lower
+            / f"{source_lower}-detail-view.xml"
+        )
+        if not xml_path.exists():
+            continue
+            
+        xml_content = xml_path.read_text(encoding="utf-8")
+        
+        grid_id = f"{f_name}DataGrid"
+        if f'id="{grid_id}"' in xml_content:
+            continue
+            
+        # Remove multiSelectComboBoxPicker for both-owning since we use dataGrid only
+        picker_id = f"{f_name}Field"
+        if f'id="{picker_id}"' in xml_content:
+            picker_pattern = f'<multiSelectComboBoxPicker id="{picker_id}"[^>]*>.*?</multiSelectComboBoxPicker>'
+            xml_content = re.sub(picker_pattern, '', xml_content, flags=re.DOTALL)
+            print(f"   -> Removed multiSelectComboBoxPicker for {f_name} in {source_name}")
+        
+        # For both-owning: replace class-based collection with property-based inside instance
+        old_inside = f'<loader id="{source_lower}Dl"/>\n        </instance>'
+        new_inside = f'<loader id="{source_lower}Dl"/>\n            <collection id="{f_name}Dc" property="{f_name}"/>\n        </instance>'
+        if old_inside in xml_content and f'class="{COMPANY}.{project_name}.entity.{tgt_class}"' in xml_content:
+            xml_content = xml_content.replace(old_inside, new_inside)
+            # Remove the class-based collection outside instance
+            old_outside = f'\n        <collection id="{f_name}Dc" class="{COMPANY}.{project_name}.entity.{tgt_class}">.*?</collection>'
+            xml_content = re.sub(old_outside, '', xml_content, flags=re.DOTALL)
+            print(f" -> Moved collection inside instance for {f_name} in {source_name}")
+        
+        print(f" 🖥️ Dynamic injecting N:N dataGrid in source: {source_name} Detail View")
+        
+        column_props = _get_property_columns(tgt_class)
+        
+        buttons_block = f'        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
+        buttons_block += f'            <button action="{grid_id}.add"/>\n'
+        buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
+        buttons_block += "        </hbox>\n"
+        grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{f_name}Dc"\n                      width="100%" maxHeight="15rem">\n'
+        grid_block += "            <actions>\n"
+        grid_block += '                <action id="add" type="list_add"/>\n'
+        grid_block += '                <action id="exclude" type="list_exclude"/>\n'
+        grid_block += "            </actions>\n"
+        grid_block += "            <columns>\n"
+        for col in column_props:
+            grid_block += f'                <column property="{col}"/>\n'
+        grid_block += "            </columns>\n"
+        grid_block += "        </dataGrid>\n"
+        
+        if "</formLayout>" in xml_content:
+            replacement = f"</formLayout>\n{buttons_block}{grid_block}"
+            xml_content = xml_content.replace("</formLayout>", replacement)
+        write_file(xml_path, xml_content)
