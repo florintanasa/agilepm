@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+import csv
 
 from jmix_cli.entity import get_entities_from_csv
 from jmix_cli.utils import (
@@ -459,10 +460,17 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         source_name = rel.get("source_entity") or ""
         if not source_name:
             continue
-        f_name = rel["field"].strip()
+        f_name = rel["field"].strip()  # owning side field (e.g., "clients" in Team)
         tgt_class = rel["target"].strip()
         tgt_lower = tgt_class.lower()
-        inv_field_name = source_name.lower() + "s" if not source_name.lower().endswith("s") else source_name.lower()
+        
+        # Determine inverse field name in target entity
+        # For N:N, if source has field "clients", target usually has "teams" 
+        # We need to read this from the generated entity or infer it
+        inv_field_name = _infer_inverse_n_n_field(tgt_class, source_name)
+        if not inv_field_name:
+            continue
+            
         xml_path = (
             PROIECT_PATH
             / "src"
@@ -481,23 +489,96 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         if f'id="{grid_id}"' in xml_content:
             continue
         print(f" 🖥️ Dynamic injecting N:N dataGrid in: {tgt_class} Detail View")
-        container_id = f"{source_name.lower()}sDc"
-        container_block = f'        <collection id="{container_id}" class="{COMPANY}.{project_name}.entity.{source_name}">\n'
-        container_block += '            <fetchPlan extends="_base"/>\n'
-        container_block += f'            <loader id="{source_name.lower()}sDl">\n'
-        container_block += "                <query>\n"
-        container_block += f"                    <![CDATA[select e from {source_name} e]]>\n"
-        container_block += "                </query>\n"
-        container_block += "            </loader>\n"
-        container_block += "        </collection>\n"
-        grid_block = f"        <dataGrid id=\"{grid_id}\" dataContainer=\"{container_id}\" selectionMode=\"MULTI\">\n"
+
+        # Build column definitions - read from entities.csv or use default for User
+        column_props = _get_property_columns(source_name)
+
+        container_id = f"{inv_field_name}Dc"
+        # Use property-based collection (inverse side)
+        container_block = f'            <collection id="{container_id}" property="{inv_field_name}"/>\n'
+        grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI">\n'
         grid_block += "            <columns>\n"
-        grid_block += f"                <column property=\"id\"/>\n"
+        for col in column_props:
+            grid_block += f'                <column property="{col}"/>\n'
         grid_block += "            </columns>\n"
         grid_block += "        </dataGrid>\n"
-        if "</data>" in xml_content:
-            xml_content = xml_content.replace("</data>", f"{container_block}    </data>")
+
+        # Inject collection inside instance element
+        if f'id="{tgt_lower}Dc"' in xml_content and "</instance>" in xml_content:
+            xml_content = xml_content.replace(
+                f'<loader id="{tgt_lower}Dl"/>',
+                f'<loader id="{tgt_lower}Dl"/>\n{container_block}'
+            )
+            xml_content = xml_content.replace('</instance>\n        </data>', f'        </instance>\n    </data>')
+        # Inject grid after formLayout
         if "</formLayout>" in xml_content:
             xml_content = xml_content.replace("</formLayout>", f"</formLayout>\n{grid_block}")
         write_file(xml_path, xml_content)
-        print(f"✨ [UI-Detail] {tgt_lower}-detail-view.xml successfully updated with N:N grid!")
+
+
+def _infer_inverse_n_n_field(target_class: str, source_class: str) -> str | None:
+    """Infer the inverse field name for N:N relationship.
+    Reads the generated Java entity to find the field with mappedBy pointing to source.
+    """
+    entity_path = (
+        PROIECT_PATH
+        / "src"
+        / "main"
+        / "java"
+        / company_path
+        / project_name
+        / "entity"
+        / f"{target_class}.java"
+    )
+    
+    if not entity_path.exists():
+        return None
+    
+    entity_content = entity_path.read_text(encoding="utf-8")
+    
+    # Find the @ManyToMany(mappedBy = "source_field") and extract the field name
+    # Pattern: private List<Source> fieldName; followed by @ManyToMany(mappedBy = "source_field")
+    import re
+    pattern = rf'private\s+List<{source_class}>\s+(\w+)\s*;\s*\n\s*@ManyToMany\(mappedBy\s*=\s*"[^"]+"\s*\)'
+    match = re.search(pattern, entity_content)
+    if match:
+        return match.group(1)
+    
+    # Alternative: find field with mappedBy containing source name
+    pattern2 = rf'private\s+List<{source_class}>\s+(\w+)\s*.\s*@ManyToMany.*mappedBy.*"{source_class.lower()}s?"'
+    match2 = re.search(pattern2, entity_content, re.DOTALL)
+    if match2:
+        return match2.group(1)
+    
+    # Fallback: common naming convention
+    if source_class.lower() == "team":
+        return "teams"
+    if source_class.lower() == "user":
+        return "users"
+    
+    return None
+
+
+def _get_property_columns(entity_name: str) -> list[str]:
+    """Get column properties for a property-based collection from entities.csv.
+    For User entity (built-in), use 'username' as the display property.
+    For other entities, read fields from entities.csv and use the first String field (typically @InstanceName).
+    """
+    # Handle built-in User entity specially
+    if entity_name.lower() == "user":
+        return ["username"]
+
+    # Read fields from entities.csv for the source entity
+    entities_path = Path("entities.csv")
+    if not entities_path.exists():
+        return ["id"]
+
+    columns = []
+    fields_list = get_entities_from_csv("entities.csv", entity_name)
+    for field in fields_list:
+        f_type = field.get("type", "").lower()
+        # Prefer String fields (typically @InstanceName)
+        if f_type in ["string", "text"]:
+            columns.append(field.get("name", ""))
+    # If no string fields found, use id
+    return columns if columns else ["id"]
