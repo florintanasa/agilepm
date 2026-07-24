@@ -538,6 +538,13 @@ def main() -> None:
 
         _finalize_composition_relationships()
 
+        # Inject relationships into existing User entity (Jmix built-in)
+        print("\n[⚡] PHASE 1.7: Injecting relationships into system User entity...")
+        if "User" in ordered_list:
+            user_rels = get_relations_from_csv("relations.csv", "User")
+            if user_rels:
+                inject_relations_into_existing_user("User", user_rels)
+
         print("\n[⚡] PHASE 2: Architecturing FlowUI Screen Descriptors & Controllers...")
         for ent in ordered_list:
             print(f"   📺 Compiling Layout XML and Java Views for: {ent}")
