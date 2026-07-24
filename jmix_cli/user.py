@@ -123,6 +123,16 @@ def _inject_inverse_for_relation(source_name: str, rel: dict[str, Any]) -> None:
         print(f"   -> Injecting inverse N:N in {tgt_class}")
         if ownership == "owning":
             inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{source_name}> {inv_field_name};\n\n'
+        elif ownership == "both-owning":
+            # both-owning: target also has owning side with JoinTable
+            join_table = f"{source_name.upper()}_{tgt_class.upper()}_LINK"
+            src_fk = f"{source_name.upper()}_ID"
+            tgt_fk = f"{tgt_class.upper()}_ID"
+            inv_field = f'    @ManyToMany\n'
+            inv_field += f'    @JoinTable(name = "{join_table}",\n'
+            inv_field += f'            joinColumns = @JoinColumn(name = "{src_fk}"),\n'
+            inv_field += f'            inverseJoinColumns = @JoinColumn(name = "{tgt_fk}"))\n'
+            inv_field += f'    private List<{source_name}> {inv_field_name};\n\n'
         else:
             join_table = f"USER_{tgt_class.upper()}_LINK"
             inv_field = f'    @ManyToMany\n'

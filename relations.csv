@@ -12,4 +12,4 @@ User,N:N,Priority,priorities,false,inverse
 User,1:1,UserProfile,profile,false,
 UserProfile,1:1,User,user,true,
 UserConfig,COMPOSITION_1:1,UserProfile,profile,true,
-Team,N:N,Client,clients,false,owning
+Team,N:N,Client,clients,false,both-owning
