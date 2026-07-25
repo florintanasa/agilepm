@@ -8,8 +8,8 @@ Task,N:1,User,assignee,false,
 Task,N:1,Priority,priority,true,
 TaskComment,N:1,User,author,true,
 User,N:1,Team,team,false,
-User,N:N,Priority,priorities,false,both-owning
+User,N:N,Priority,priorities,false,owning
 User,1:1,UserProfile,profile,false,
 UserProfile,1:1,User,user,true,
 UserConfig,COMPOSITION_1:1,UserProfile,profile,true,
-Team,N:N,Client,clients,false,both-owning
+Team,N:N,Client,clients,false,owning
