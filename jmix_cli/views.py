@@ -458,12 +458,6 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         if rel["type"].strip().upper() != "N:N":
             continue
         source_name = rel.get("source_entity") or ""
-
-def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> None:
-    for rel in relations_list:
-        if rel["type"].strip().upper() != "N:N":
-            continue
-        source_name = rel.get("source_entity") or ""
         if not source_name:
             continue
         f_name = rel["field"].strip()
@@ -471,8 +465,10 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         tgt_lower = tgt_class.lower()
         ownership = rel.get("ownership", "owning")
         
-        # For inverse ownership, source is inverse side, target is owning - skip (no UI needed for owning side here)
-        if ownership == "inverse":
+        # For single-owning: source has JoinTable + multiSelect, target has mappedBy but NO UI
+        # For owning (default): source has JoinTable + multiSelect, target has mappedBy + readOnly dataGrid
+        # For both-owning: both sides have dataGrid with add/exclude
+        if ownership in ("inverse", "single-owning"):
             continue
             
         # Determine inverse field name in target entity
@@ -519,7 +515,7 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
                 grid_block += f'                <column property="{col}"/>\n'
             grid_block += "            </columns>\n"
             grid_block += "        </dataGrid>\n"
-        else:
+        elif ownership == "owning":
             buttons_block = ""
             grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
             grid_block += "            <columns>\n"
@@ -527,6 +523,9 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
                 grid_block += f'                <column property="{col}"/>\n'
             grid_block += "            </columns>\n"
             grid_block += "        </dataGrid>\n"
+        else:
+            # single-owning: no UI for target entity
+            continue
 
         if f'id="{tgt_lower}Dc"' in xml_content and "</instance>" in xml_content:
             xml_content = xml_content.replace(

@@ -121,7 +121,8 @@ def _inject_inverse_for_relation(source_name: str, rel: dict[str, Any]) -> None:
         if check in java_tgt_content:
             return
         print(f"   -> Injecting inverse N:N in {tgt_class}")
-        if ownership == "owning":
+        #if ownership == "owning":
+        if ownership in ("owning","single-owning"):
             inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{source_name}> {inv_field_name};\n\n'
         elif ownership == "both-owning":
             # both-owning: target also has owning side with JoinTable - same table as source
