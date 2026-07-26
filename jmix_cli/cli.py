@@ -75,7 +75,7 @@ def _read_company_name(build_path: Path) -> str | None:
     return m.group(2) if m else None
 
 
-DRY_RUN_SERVER_PORT = "8081"
+DRY_RUN_SERVER_PORT = "0"
 
 
 def _ensure_dry_run_server_port(properties_path: Path) -> None:
@@ -128,7 +128,9 @@ def _copy_project_to_temp() -> Path:
         f"  cd {temp_dir}\n"
         f"  chmod +x gradlew\n"
         f"  ./gradlew bootRun\n\n"
-        f"Note: server.port={DRY_RUN_SERVER_PORT} was set for dry-run to avoid conflicts.\n",
+        f"Note: server.port={DRY_RUN_SERVER_PORT} was set, so Tomcat will pick a random free port.\n"
+        f"Look for 'Application started at http://localhost:XXXX' in the bootRun log.\n"
+        f"To use a fixed port, edit src/main/resources/application.properties and set server.port=<desired_port>.\n",
         encoding="utf-8",
     )
     return temp_dir
@@ -182,7 +184,8 @@ def _print_dry_run_summary(temp_dir: Path, original_dir: Path) -> None:
     print(f"    meld {original_dir} {temp_dir}")
     print(f"\n  To run the application:")
     print(f"    cd {temp_dir} && ./gradlew bootRun")
-    print(f"    Application will be available at: http://localhost:{DRY_RUN_SERVER_PORT}")
+    print(f"    Look for 'Application started at http://localhost:XXXX' in the bootRun log.")
+    print(f"    To use a fixed port, set server.port=<desired_port> in src/main/resources/application.properties.")
     print("=" * 70 + "\n")
 
 
