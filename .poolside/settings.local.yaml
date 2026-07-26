@@ -17,8 +17,10 @@ tools:
             - git log *
             - git checkout d39ba1e *
             - git stash *
-            - rm *
+            - git add *
+            - git commit *
             - git checkout *
+            - python *
             - sleep 20
             - ./gradlew compileJava
             - sleep 30
@@ -31,6 +33,7 @@ tools:
             - xargs *
             - find *
             - sed *
+            - diff *
             - sleep 5
             - "true"
             - cut *
