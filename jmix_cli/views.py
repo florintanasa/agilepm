@@ -527,13 +527,13 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         container_block = f'            <collection id="{container_id}" property="{inv_field_name}"/>\n'
 
         if ownership == "both-owning":
-            buttons_block = f'        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
+            container_block_start = "        <vbox>\n"
+            container_block_start += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
+            buttons_block = '        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
             buttons_block += f'            <button action="{grid_id}.add"/>\n'
             buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
             buttons_block += "        </hbox>\n"
-            grid_block = f'        <vbox>\n'
-            grid_block += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
-            grid_block += f'            <dataGrid id="{grid_id}" dataContainer="{container_id}"\n                      width="100%" maxHeight="15rem">\n'
+            grid_block = f'            <dataGrid id="{grid_id}" dataContainer="{container_id}"\n                      width="100%" maxHeight="15rem">\n'
             grid_block += "                <actions>\n"
             grid_block += '                    <action id="add" type="list_add"/>\n'
             grid_block += '                    <action id="exclude" type="list_exclude"/>\n'
@@ -542,19 +542,19 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
             for col in column_props:
                 grid_block += f'                    <column property="{col}"/>\n'
             grid_block += "                </columns>\n"
-            grid_block += f'            </dataGrid>\n'
-            grid_block += f'        </vbox>\n'
+            grid_block += "            </dataGrid>\n"
+            container_block_finish = "        </vbox>\n"
         elif ownership == "owning":
+            container_block_start = '        <vbox>\n'
+            container_block_start += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
             buttons_block = ""
-            grid_block = f'        <vbox>\n'
-            grid_block += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
-            grid_block += f'            <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
+            grid_block = f'            <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
             grid_block += "                <columns>\n"
             for col in column_props:
                 grid_block += f'                    <column property="{col}"/>\n'
             grid_block += "                </columns>\n"
-            grid_block += f'            </dataGrid>\n'
-            grid_block += f'        </vbox>\n'
+            grid_block += "            </dataGrid>\n"
+            container_block_finish = "        </vbox>\n"
         else:
             # single-owning: no UI for target entity
             continue
@@ -566,7 +566,7 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
             )
             xml_content = xml_content.replace('</instance>\n        </data>', f'        </instance>\n    </data>')
         if "</formLayout>" in xml_content:
-            replacement = f"</formLayout>\n{buttons_block}{grid_block}"
+            replacement = f"</formLayout>\n{container_block_start}{buttons_block}{grid_block}{container_block_finish}"
             xml_content = xml_content.replace("</formLayout>", replacement)
         write_file(xml_path, xml_content)
 
@@ -709,13 +709,13 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
 
         column_props = _get_property_columns(tgt_class)
 
-        buttons_block = f'        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
+        container_block_start = '        <vbox>\n'
+        container_block_start += f'            <h3 text="msg://com.company.agilepm.view.{tgt_class.lower()}/{tgt_class.lower()}ListView.title"/>\n'
+        buttons_block = '        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
         buttons_block += f'            <button action="{grid_id}.add"/>\n'
         buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
         buttons_block += "        </hbox>\n"
-        grid_block = f'        <vbox>\n'
-        grid_block += f'            <h3 text="msg://com.company.agilepm.view.{tgt_class.lower()}/{tgt_class.lower()}ListView.title"/>\n'
-        grid_block += f'            <dataGrid id="{grid_id}" dataContainer="{f_name}Dc"\n                      width="100%" maxHeight="15rem">\n'
+        grid_block = f'            <dataGrid id="{grid_id}" dataContainer="{f_name}Dc"\n                      width="100%" maxHeight="15rem">\n'
         grid_block += "                <actions>\n"
         grid_block += '                    <action id="add" type="list_add"/>\n'
         grid_block += '                    <action id="exclude" type="list_exclude"/>\n'
@@ -724,10 +724,10 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
         for col in column_props:
             grid_block += f'                    <column property="{col}"/>\n'
         grid_block += "                </columns>\n"
-        grid_block += f'            </dataGrid>\n'
-        grid_block += f'        </vbox>\n'
+        grid_block += "            </dataGrid>\n"
+        container_block_finish = "        </vbox>\n"
 
         if "</formLayout>" in xml_content:
-            replacement = f"</formLayout>\n{buttons_block}{grid_block}"
+            replacement = f"</formLayout>\n{container_block_start}{buttons_block}{grid_block}{container_block_finish}"
             xml_content = xml_content.replace("</formLayout>", replacement)
         write_file(xml_path, xml_content)
