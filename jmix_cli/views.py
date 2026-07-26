@@ -1,3 +1,29 @@
+# -
+# Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+# IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# -
+
 from pathlib import Path
 from typing import Any
 import csv
@@ -464,18 +490,18 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         tgt_class = rel["target"].strip()
         tgt_lower = tgt_class.lower()
         ownership = rel.get("ownership", "owning")
-        
+
         # For single-owning: source has JoinTable + multiSelect, target has mappedBy but NO UI
         # For owning (default): source has JoinTable + multiSelect, target has mappedBy + readOnly dataGrid
         # For both-owning: both sides have dataGrid with add/exclude
         if ownership in ("inverse", "single-owning"):
             continue
-            
+
         # Determine inverse field name in target entity
         inv_field_name = _infer_inverse_n_n_field(tgt_class, source_name)
         if not inv_field_name:
             continue
-            
+
         xml_path = (
             PROIECT_PATH
             / "src"
@@ -499,7 +525,7 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
 
         container_id = f"{inv_field_name}Dc"
         container_block = f'            <collection id="{container_id}" property="{inv_field_name}"/>\n'
-        
+
         if ownership == "both-owning":
             buttons_block = f'        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
             buttons_block += f'            <button action="{grid_id}.add"/>\n'
@@ -553,12 +579,12 @@ def _infer_inverse_n_n_field(target_class: str, source_class: str) -> str | None
         / "entity"
         / f"{target_class}.java"
     )
-    
+
     if not entity_path.exists():
         return None
-    
+
     entity_content = entity_path.read_text(encoding="utf-8")
-    
+
     # Find the @ManyToMany(mappedBy = "source_field") and extract the field name
     # Pattern: private List<Source> fieldName; followed by @ManyToMany(mappedBy = "source_field")
     import re
@@ -566,19 +592,19 @@ def _infer_inverse_n_n_field(target_class: str, source_class: str) -> str | None
     match = re.search(pattern, entity_content)
     if match:
         return match.group(1)
-    
+
     # Alternative: find field with mappedBy containing source name
     pattern2 = rf'private\s+List<{source_class}>\s+(\w+)\s*.\s*@ManyToMany.*mappedBy.*"{source_class.lower()}s?"'
     match2 = re.search(pattern2, entity_content, re.DOTALL)
     if match2:
         return match2.group(1)
-    
+
     # Fallback: common naming convention
     if source_class.lower() == "team":
         return "teams"
     if source_class.lower() == "user":
         return "users"
-    
+
     return None
 
 
@@ -619,15 +645,15 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
         ownership = rel.get("ownership", "owning")
         if ownership != "both-owning":
             continue
-            
+
         source_name = rel.get("source_entity") or ""
         if not source_name:
             continue
         f_name = rel["field"].strip()
         tgt_class = rel["target"].strip()
-        
+
         source_lower = source_name.lower()
-        
+
         xml_path = (
             PROIECT_PATH
             / "src"
@@ -641,20 +667,20 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
         )
         if not xml_path.exists():
             continue
-            
+
         xml_content = xml_path.read_text(encoding="utf-8")
-        
+
         grid_id = f"{f_name}DataGrid"
         if f'id="{grid_id}"' in xml_content:
             continue
-            
+
         # Remove multiSelectComboBoxPicker for both-owning since we use dataGrid only
         picker_id = f"{f_name}Field"
         if f'id="{picker_id}"' in xml_content:
             picker_pattern = f'<multiSelectComboBoxPicker id="{picker_id}"[^>]*>.*?</multiSelectComboBoxPicker>'
             xml_content = re.sub(picker_pattern, '', xml_content, flags=re.DOTALL)
             print(f"   -> Removed multiSelectComboBoxPicker for {f_name} in {source_name}")
-        
+
         # For both-owning: replace class-based collection with property-based inside instance
         # Handle both <loader id="x"/> and <loader/> (no id)
         old_inside1 = f'<loader id="{source_lower}Dl"/>\n        </instance>'
@@ -672,11 +698,11 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
             old_outside = f'<collection id="{tgt_class[0].lower() + tgt_class[1:]}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">.*?</collection>'
             xml_content = re.sub(old_outside, '', xml_content, flags=re.DOTALL)
             print(f" -> Moved collection inside instance for {f_name} in {source_name}")
-        
+
         print(f" 🖥️ Dynamic injecting N:N dataGrid in source: {source_name} Detail View")
-        
+
         column_props = _get_property_columns(tgt_class)
-        
+
         buttons_block = f'        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
         buttons_block += f'            <button action="{grid_id}.add"/>\n'
         buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
@@ -691,7 +717,7 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
             grid_block += f'                <column property="{col}"/>\n'
         grid_block += "            </columns>\n"
         grid_block += "        </dataGrid>\n"
-        
+
         if "</formLayout>" in xml_content:
             replacement = f"</formLayout>\n{buttons_block}{grid_block}"
             xml_content = xml_content.replace("</formLayout>", replacement)
