@@ -528,7 +528,7 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
 
         if ownership == "both-owning":
             container_block_start = "        <vbox>\n"
-            container_block_start += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
+            container_block_start += f'            <h3 text="msg://{COMPANY}.{project_name}.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
             buttons_block = '        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
             buttons_block += f'            <button action="{grid_id}.add"/>\n'
             buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
@@ -546,7 +546,7 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
             container_block_finish = "        </vbox>\n"
         elif ownership == "owning":
             container_block_start = '        <vbox>\n'
-            container_block_start += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
+            container_block_start += f'            <h3 text="msg://{COMPANY}.{project_name}.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
             buttons_block = ""
             grid_block = f'            <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
             grid_block += "                <columns>\n"
@@ -710,7 +710,7 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
         column_props = _get_property_columns(tgt_class)
 
         container_block_start = '        <vbox>\n'
-        container_block_start += f'            <h3 text="msg://com.company.agilepm.view.{tgt_class.lower()}/{tgt_class.lower()}ListView.title"/>\n'
+        container_block_start += f'            <h3 text="msg://{COMPANY}.{project_name}.view.{tgt_class.lower()}/{tgt_class.lower()}ListView.title"/>\n'
         buttons_block = '        <hbox id="buttonsPanel" classNames="buttons-panel">\n'
         buttons_block += f'            <button action="{grid_id}.add"/>\n'
         buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
