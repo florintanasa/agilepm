@@ -91,7 +91,7 @@ def _copy_project_to_temp() -> Path:
     temp_dir = Path(tempfile.mkdtemp(prefix="jmix-dry-run-"))
     print(f"[dry-run] Creating temporary project at: {temp_dir}")
 
-    dirs_to_copy = ["src"]
+    dirs_to_copy = ["src", "gradle"]
     files_to_copy = [
         "build.gradle",
         "settings.gradle",
