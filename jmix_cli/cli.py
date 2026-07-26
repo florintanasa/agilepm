@@ -75,14 +75,17 @@ def _read_company_name(build_path: Path) -> str | None:
     return m.group(2) if m else None
 
 
-def _ensure_server_port_zero(properties_path: Path) -> None:
+DRY_RUN_SERVER_PORT = "8081"
+
+
+def _ensure_dry_run_server_port(properties_path: Path) -> None:
     if not properties_path.exists():
         return
     content = properties_path.read_text(encoding="utf-8")
     if "server.port=" in content:
-        content = re.sub(r"server\.port\s*=\s*.*", "server.port=0", content)
+        content = re.sub(r"server\.port\s*=\s*.*", f"server.port={DRY_RUN_SERVER_PORT}", content)
     else:
-        content += "\nserver.port=0\n"
+        content += f"\nserver.port={DRY_RUN_SERVER_PORT}\n"
     properties_path.write_text(content, encoding="utf-8")
 
 
@@ -115,7 +118,7 @@ def _copy_project_to_temp() -> Path:
             shutil.copy2(s, temp_dir / f)
 
     props = temp_dir / "src" / "main" / "resources" / "application.properties"
-    _ensure_server_port_zero(props)
+    _ensure_dry_run_server_port(props)
 
     readme = temp_dir / "README-dry-run.txt"
     readme.write_text(
@@ -125,7 +128,7 @@ def _copy_project_to_temp() -> Path:
         f"  cd {temp_dir}\n"
         f"  chmod +x gradlew\n"
         f"  ./gradlew bootRun\n\n"
-        f"Note: server.port=0 was set to avoid conflicts.\n",
+        f"Note: server.port={DRY_RUN_SERVER_PORT} was set for dry-run to avoid conflicts.\n",
         encoding="utf-8",
     )
     return temp_dir
@@ -179,6 +182,7 @@ def _print_dry_run_summary(temp_dir: Path, original_dir: Path) -> None:
     print(f"    meld {original_dir} {temp_dir}")
     print(f"\n  To run the application:")
     print(f"    cd {temp_dir} && ./gradlew bootRun")
+    print(f"    Application will be available at: http://localhost:{DRY_RUN_SERVER_PORT}")
     print("=" * 70 + "\n")
 
 
