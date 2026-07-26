@@ -29,6 +29,7 @@ from typing import Any
 import csv
 
 from jmix_cli.entity import get_entities_from_csv
+from jmix_cli.utils import get_logger
 from jmix_cli.utils import (
     COMPANY,
     PROIECT_PATH,
@@ -37,6 +38,8 @@ from jmix_cli.utils import (
     project_name,
     write_file,
 )
+
+logger = get_logger("jmix_cli.views")
 
 
 def gen_list_view_from_csv(
@@ -153,13 +156,13 @@ public class {name}ListView extends StandardListView<{name}> {{
     java_dir = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "view" / lower_name
     write_file(view_dir / f"{lower_name}-list-view.xml", xml_content)
     write_file(java_dir / f"{name}ListView.java", java_content)
-    print(f" 🖥️ Successfully generated List View for: {name}")
+    logger.info(f" 🖥️ Successfully generated List View for: {name}")
 
 
 def gen_detail_view_from_csv(
     name: str, fields_list: list[dict[str, Any]], relations_list: list[dict[str, Any]] = []
 ) -> None:
-    print(f" 🖥️ Starting FlowUI Detail View architecture for entity: '{name}'")
+    logger.info(f" 🖥️ Starting FlowUI Detail View architecture for entity: '{name}'")
     lower_name = name.lower()
 
     xml_form_components = ""
@@ -280,7 +283,7 @@ public class {name}DetailView extends StandardDetailView<{name}> {{
     java_dir = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "view" / lower_name
     write_file(view_dir / f"{lower_name}-detail-view.xml", xml_content)
     write_file(java_dir / f"{name}DetailView.java", java_content)
-    print(f" 🖥️ Detail View successfully generated for: {name}")
+    logger.info(f" 🖥️ Detail View successfully generated for: {name}")
 
     _inject_composition_ui_into_parent(name, fields_list, relations_list)
 
@@ -312,7 +315,7 @@ def _inject_composition_ui_into_parent(
         if f'id="{f_name}DataGrid"' in xml_tgt_content:
             continue
 
-        print(f" 🖥️ Dynamic injecting @Composition UI in: {tgt_class} Detail View")
+        logger.info(f" 🖥️ Dynamic injecting @Composition UI in: {tgt_class} Detail View")
         property_container = f'            <collection id="{f_name}Dc" property="{f_name}"/>\n'
         if f'id="{tgt_lower}Dc"' in xml_tgt_content:
             xml_tgt_content = xml_tgt_content.replace(
@@ -401,7 +404,7 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> N
             modified = True
     if modified:
         write_file(xml_path, xml_content)
-        print("✨ [UI-List] user-list-view.xml successfully updated dynamically!")
+        logger.info("✨ [UI-List] user-list-view.xml successfully updated dynamically!")
 
 
 def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> None:
@@ -474,7 +477,7 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) ->
                 "</formLayout>", f"{accumulated_form_components}        </formLayout>"
             )
         write_file(xml_path, xml_content)
-        print(
+        logger.info(
             "✨ [UI-Detail] user-detail-view.xml successfully updated dynamically!"
         )
 
@@ -519,7 +522,7 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
         grid_id = f"{inv_field_name}DataGrid"
         if f'id="{grid_id}"' in xml_content:
             continue
-        print(f" 🖥️ Dynamic injecting N:N dataGrid in: {tgt_class} Detail View")
+        logger.info(f" 🖥️ Dynamic injecting N:N dataGrid in: {tgt_class} Detail View")
 
         column_props = _get_property_columns(source_name)
 
@@ -685,7 +688,7 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
         if f'id="{picker_id}"' in xml_content:
             picker_pattern = f'<multiSelectComboBoxPicker id="{picker_id}"[^>]*>.*?</multiSelectComboBoxPicker>'
             xml_content = re.sub(picker_pattern, '', xml_content, flags=re.DOTALL)
-            print(f"   -> Removed multiSelectComboBoxPicker for {f_name} in {source_name}")
+            logger.info(f"   -> Removed multiSelectComboBoxPicker for {f_name} in {source_name}")
 
         # For both-owning: replace class-based collection with property-based inside instance
         # Handle both <loader id="x"/> and <loader/> (no id)
@@ -697,15 +700,15 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
             xml_content = xml_content.replace(old_inside1, new_inside)
             old_outside = f'\n        <collection id="{f_name}Dc" class="{COMPANY}.{project_name}.entity.{tgt_class}">.*?</collection>'
             xml_content = re.sub(old_outside, '', xml_content, flags=re.DOTALL)
-            print(f" -> Moved collection inside instance for {f_name} in {source_name}")
+            logger.info(f" -> Moved collection inside instance for {f_name} in {source_name}")
         elif old_inside2 in xml_content and f'class="{COMPANY}.{project_name}.entity.{tgt_class}"' in xml_content:
             xml_content = xml_content.replace(old_inside2, new_inside)
             # Remove the Jmix-generated collection id (lowercase class + s)
             old_outside = f'<collection id="{tgt_class[0].lower() + tgt_class[1:]}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">.*?</collection>'
             xml_content = re.sub(old_outside, '', xml_content, flags=re.DOTALL)
-            print(f" -> Moved collection inside instance for {f_name} in {source_name}")
+            logger.info(f" -> Moved collection inside instance for {f_name} in {source_name}")
 
-        print(f" 🖥️ Dynamic injecting N:N dataGrid in source: {source_name} Detail View")
+        logger.info(f" 🖥️ Dynamic injecting N:N dataGrid in source: {source_name} Detail View")
 
         column_props = _get_property_columns(tgt_class)
 

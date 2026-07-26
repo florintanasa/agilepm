@@ -25,11 +25,23 @@
 # -
 
 import csv
+import logging
 import os
 import re
+import sys
 from pathlib import Path
 
 PROIECT_PATH = Path.cwd()
+
+
+def get_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter("[%(levelname)s] %(message)s")
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    return logger
 
 
 def get_project_name(settings_path: Path = Path("settings.gradle")) -> str | None:

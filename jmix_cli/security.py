@@ -28,13 +28,16 @@ import csv
 from pathlib import Path
 from typing import Any
 
+from jmix_cli.utils import get_logger
 from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, project_name, validate_csv_path, write_file
+
+logger = get_logger("jmix_cli.security")
 
 
 def gen_jmix_resource_roles_from_csv() -> None:
     roles_file = Path("roles.csv")
     if not roles_file.exists():
-        print(f"[-] Error: roles.csv configuration file not found.")
+        logger.error(f"[-] Error: roles.csv configuration file not found.")
         raise FileNotFoundError("roles.csv")
 
     validate_csv_path("roles.csv", ["name", "code", "entity_name", "ui_list", "ui_detail", "create", "read", "update", "delete"])
@@ -53,7 +56,7 @@ def gen_jmix_resource_roles_from_csv() -> None:
         raw_class_name = "".join([part.capitalize() for part in r_code.split("-")])
         class_name = raw_class_name if raw_class_name.endswith("Role") else raw_class_name + "Role"
 
-        print(f"[*] Compiling Jmix ResourceRole: '{role_name}' -> {class_name}.java")
+        logger.info(f"[*] Compiling Jmix ResourceRole: '{role_name}' -> {class_name}.java")
 
         java_imports = {
             "import io.jmix.security.model.SecurityScope;",

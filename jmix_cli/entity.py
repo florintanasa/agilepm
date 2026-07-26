@@ -28,6 +28,7 @@ import csv
 from pathlib import Path
 from typing import Any
 
+from jmix_cli.utils import get_logger
 from jmix_cli.utils import (
     COMPANY,
     PROIECT_PATH,
@@ -39,6 +40,8 @@ from jmix_cli.utils import (
     validate_csv_path,
     write_file,
 )
+
+logger = get_logger("jmix_cli.entity")
 
 
 def get_traits_from_csv(csv_path: str, target_entity_name: str) -> dict[str, Any]:
@@ -72,7 +75,7 @@ def get_entities_from_csv(csv_path: str, target_entity_name: str) -> list[dict[s
     fields_list: list[dict[str, Any]] = []
     csv_file = Path(csv_path)
     if not csv_file.exists():
-        print(f" ! Error: The file CSV was not found at : {csv_path}")
+        logger.info(f" ! Error: The file CSV was not found at : {csv_path}")
         return fields_list
     validate_csv_path(csv_path, ["entity_name", "field_name", "field_type", "mandatory", "unique"])
     with csv_file.open(mode="r", encoding="utf-8") as f:
@@ -214,7 +217,7 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
                 java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
                 inv_field_name = name[0].lower() + name[1:]
                 if f"private {name} {inv_field_name};" not in java_tgt_content:
-                    print(f" 🔗 Infiltrating inverse 1:1 association into the parent class: {tgt_class}")
+                    logger.info(f" 🔗 Infiltrating inverse 1:1 association into the parent class: {tgt_class}")
                     inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {name} {inv_field_name};\n\n'
                     inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
                     inv_methods = f"    public {name} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
@@ -259,7 +262,7 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
             if tgt_file_path.exists():
                 java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
                 if f"private List<{name}> {inv_field_name};" not in java_tgt_content:
-                    print(f" 🔗 Injecting inverse N:N association into the target class: {tgt_class}")
+                    logger.info(f" 🔗 Injecting inverse N:N association into the target class: {tgt_class}")
                     if ownership == "both-owning":
                         # both-owning: target also has JoinTable - same table name as source
                         join_table_name = f"{name.upper()}_{tgt_class.upper()}_LINK"
@@ -314,7 +317,7 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
         ):
             continue
 
-        print(f" 🔗 Injection of @Composition ({rel['type']}) into the class: {tgt_class}")
+        logger.info(f" 🔗 Injection of @Composition ({rel['type']}) into the class: {tgt_class}")
         new_field = ""
         new_methods = ""
         f_caps = f_name[0].upper() + f_name[1:]
@@ -346,7 +349,7 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                 java_src_content = src_file_path.read_text(encoding="utf-8")
                 inv_field_name = name[0].lower() + name[1:]
                 if f"private {name} {inv_field_name};" not in java_src_content:
-                    print(f" 🔗 Infiltrating inverse 1:1 mappedBy link into the child composition class: {src_class}")
+                    logger.info(f" 🔗 Infiltrating inverse 1:1 mappedBy link into the child composition class: {src_class}")
                     inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {name} {inv_field_name};\n\n'
                     inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
                     inv_methods = f"    public {name} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
@@ -404,7 +407,7 @@ def get_relations_from_csv(csv_path: str, target_entity_name: str) -> list[dict[
         required = ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"]
         for req in required:
             if req not in fieldnames:
-                print(f" ! Error: Missing column '{req}' in relations.csv")
+                logger.info(f" ! Error: Missing column '{req}' in relations.csv")
                 return relations_list
         for row in reader:
             if row["source_entity"].strip().lower() == target_entity_name.lower():
@@ -514,6 +517,7 @@ import io.jmix.core.metamodel.annotation.InstanceName;
 import io.jmix.core.metamodel.annotation.JmixEntity;
 import jakarta.persistence.*;
 import java.util.UUID;
+
 {imports_block}
 @JmixEntity
 {table_annotation}
@@ -538,4 +542,4 @@ public class {name} {{
 
     td = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity"
     write_file(td / f"{name}.java", java_content)
-    print("✨ Entity saved successfully in: " + str(td / f"{name}.java"))
+    logger.info("✨ Entity saved successfully in: " + str(td / f"{name}.java"))

@@ -31,7 +31,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+from jmix_cli.utils import get_logger
 from jmix_cli.utils import COMPANY, PROIECT_PATH, append_unique, company_path, project_name, validate_csv_path
+
+logger = get_logger("jmix_cli.i18n")
 
 _CACHE_FILE = Path(".ollama_translation_cache.json")
 _translation_cache: dict[str, str] = {}
@@ -91,7 +94,7 @@ def ask_ollama_translation(text_to_translate: str, target_language_name: str) ->
             _translation_cache[key] = result
             return result
     except Exception as e:
-        print(f"[-] Ollama translation warning: {e}. Falling back to English.")
+        logger.error(f"[-] Ollama translation warning: {e}. Falling back to English.")
     return text_to_translate
 
 
@@ -99,7 +102,7 @@ def update_messages_entity(
     project_dir: str, base_package: str, entity_name: str, traits_list: list[str], relations_list: list[dict[str, Any]] = []
 ) -> None:
     n = entity_name.strip()
-    print(
+    logger.info(
         f"Generating dynamic parametric localization messages for exact entity {n}..."
     )
 
@@ -302,7 +305,7 @@ def update_messages_entity(
         if locale == "en":
             append_unique(str(base_path / "messages.properties"), target_lines)
 
-    print(
+    logger.info(
         f"✨ Parametric localization layout for entity '{n}' successfully compiled across available locales!"
     )
     _persist_cache()

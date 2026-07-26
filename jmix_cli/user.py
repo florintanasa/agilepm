@@ -27,7 +27,10 @@
 from pathlib import Path
 from typing import Any
 
+from jmix_cli.utils import get_logger
 from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, inject_import_if_missing, project_name
+
+logger = get_logger("jmix_cli.user")
 
 
 def _ensure_import(content: str, import_class: str) -> str:
@@ -123,7 +126,7 @@ def _inject_inverse_for_relation(source_name: str, rel: dict[str, Any]) -> None:
         inv_field_name = "user"
         if f"private User {inv_field_name};" in java_tgt_content:
             return
-        print(f"   -> Injecting inverse 1:1 in {tgt_class}")
+        logger.info(f"   -> Injecting inverse 1:1 in {tgt_class}")
         inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private User {inv_field_name};\n\n'
         inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
         inv_methods = f"    public User get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
@@ -141,7 +144,7 @@ def _inject_inverse_for_relation(source_name: str, rel: dict[str, Any]) -> None:
         check = f"private List<{source_name}> {inv_field_name};"
         if check in java_tgt_content:
             return
-        print(f"   -> Injecting inverse N:N in {tgt_class}")
+        logger.info(f"   -> Injecting inverse N:N in {tgt_class}")
         #if ownership == "owning":
         if ownership in ("owning","single-owning"):
             inv_field = f'    @ManyToMany(mappedBy = "{f_name}")\n    private List<{source_name}> {inv_field_name};\n\n'
@@ -182,7 +185,7 @@ def inject_relations_into_existing_user(source_name: str, relations_list: list[d
         PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / "User.java"
     )
     if not user_java_path.exists():
-        print("[DEBUG] User.java not found")
+        logger.debug("[DEBUG] User.java not found")
         return
     content = user_java_path.read_text(encoding="utf-8")
     modified = False
@@ -194,7 +197,7 @@ def inject_relations_into_existing_user(source_name: str, relations_list: list[d
         tgt_class = rel["target"]
         already_present = f"private {tgt_class} {f_name};" in content or f"private List<{tgt_class}> {f_name};" in content
         if not already_present:
-            print(f"   -> Injecting relation {r_type} '{f_name}' in User.java")
+            logger.info(f"   -> Injecting relation {r_type} '{f_name}' in User.java")
         if r_type == "N:1":
             content = _inject_n1(content, rel)
         elif r_type == "1:1":
@@ -205,4 +208,4 @@ def inject_relations_into_existing_user(source_name: str, relations_list: list[d
         modified = True
     if modified:
         user_java_path.write_text(content, encoding="utf-8")
-        print("✨ [Java] User.java has been updated with the new relationships!")
+        logger.info("✨ [Java] User.java has been updated with the new relationships!")

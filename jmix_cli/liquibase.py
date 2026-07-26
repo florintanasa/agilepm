@@ -29,7 +29,10 @@ import os
 from datetime import datetime
 from typing import Any
 
+from jmix_cli.utils import get_logger
 from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, ensure_dir, project_name, write_file
+
+logger = get_logger("jmix_cli.liquibase")
 
 
 def map_type(java_type: str) -> str:
@@ -136,7 +139,7 @@ def gen_liquibase_changelog_from_csv(
     ensure_dir(target_dir)
     filename = f"{target_dir}/01-base-{name.lower()}.xml"
     write_file(filename, xml_content)
-    print(f" -> Generated Liquibase XML with Constraints & Indexes: {filename}")
+    logger.info(f" -> Generated Liquibase XML with Constraints & Indexes: {filename}")
 
 
 def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, Any]]) -> None:
@@ -256,4 +259,4 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
     ensure_dir(target_dir)
     filename = f"{target_dir}/02-relations-{name.lower()}.xml"
     write_file(filename, xml_content)
-    print(f" -> Generated Liquibase Relations XML: {filename}")
+    logger.info(f" -> Generated Liquibase Relations XML: {filename}")

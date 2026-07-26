@@ -26,6 +26,7 @@
 # -
 
 import csv
+import logging
 import os
 import re
 import shutil
@@ -35,6 +36,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from jmix_cli.utils import get_logger
 from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, validate_csv_path
 from jmix_cli.entity import (
     _inject_composition_into_parent,
@@ -57,6 +59,8 @@ from jmix_cli.views import (
 from jmix_cli.security import gen_jmix_resource_roles_from_csv
 from jmix_cli.i18n import update_messages_entity
 from jmix_cli.user import inject_relations_into_existing_user
+
+logger = get_logger("jmix_cli.cli")
 
 
 def _read_project_name(settings_path: Path) -> str | None:
@@ -92,7 +96,7 @@ def _ensure_dry_run_server_port(properties_path: Path) -> None:
 def _copy_project_to_temp() -> Path:
     src = Path.cwd()
     temp_dir = Path(tempfile.mkdtemp(prefix="jmix-dry-run-"))
-    print(f"[dry-run] Creating temporary project at: {temp_dir}")
+    logger.info(f"[dry-run] Creating temporary project at: {temp_dir}")
 
     dirs_to_copy = ["src", "gradle"]
     files_to_copy = [
@@ -173,20 +177,20 @@ def _print_dry_run_summary(temp_dir: Path, original_dir: Path) -> None:
     xml_files = list(temp_dir.rglob("*.xml"))
     props_files = list(temp_dir.rglob("*.properties"))
 
-    print("\n" + "=" * 70)
-    print("[dry-run] Generation completed successfully!")
-    print("=" * 70)
-    print(f"  Dry-run output directory: {temp_dir}")
-    print(f"  Generated Java files:     {len(java_files)}")
-    print(f"  Generated XML files:      {len(xml_files)}")
-    print(f"  Generated properties:     {len(props_files)}")
-    print(f"\n  To inspect differences:")
-    print(f"    meld {original_dir} {temp_dir}")
-    print(f"\n  To run the application:")
-    print(f"    cd {temp_dir} && ./gradlew bootRun")
-    print(f"    Look for 'Application started at http://localhost:XXXX' in the bootRun log.")
-    print(f"    To use a fixed port, set server.port=<desired_port> in src/main/resources/application.properties.")
-    print("=" * 70 + "\n")
+    logger.info("\n" + "=" * 70)
+    logger.info("[dry-run] Generation completed successfully!")
+    logger.info("=" * 70)
+    logger.info(f"  Dry-run output directory: {temp_dir}")
+    logger.info(f"  Generated Java files:     {len(java_files)}")
+    logger.info(f"  Generated XML files:      {len(xml_files)}")
+    logger.info(f"  Generated properties:     {len(props_files)}")
+    logger.info(f"\n  To inspect differences:")
+    logger.info(f"    meld {original_dir} {temp_dir}")
+    logger.info(f"\n  To run the application:")
+    logger.info(f"    cd {temp_dir} && ./gradlew bootRun")
+    logger.info(f"    Look for 'Application started at http://localhost:XXXX' in the bootRun log.")
+    logger.info(f"    To use a fixed port, set server.port=<desired_port> in src/main/resources/application.properties.")
+    logger.info("=" * 70 + "\n")
 
 
 def _dry_run_enabled() -> bool:
@@ -203,7 +207,7 @@ def _finish_dry_run(temp_dir: Path | None, original_dir: Path | None = None) -> 
 
 def _generate_single_entity(name: str) -> None:
     if name == "User":
-        print("👤 [System User] Triggering relational infiltration...")
+        logger.info("👤 [System User] Triggering relational infiltration...")
         relations_list = get_relations_from_csv("relations.csv", "User")
         if relations_list:
             gen_liquibase_relations_changelog("User", relations_list)
@@ -216,15 +220,15 @@ def _generate_single_entity(name: str) -> None:
                 relations_list=relations_list,
             )
         else:
-            print("   -> No relationships were configured for the User in relations.csv.")
+            logger.info("   -> No relationships were configured for the User in relations.csv.")
     else:
         traits = get_traits_from_csv("traits.csv", name)
         fields_list = get_entities_from_csv("entities.csv", name)
         relations_list = get_relations_from_csv("relations.csv", name)
         if not fields_list:
-            print(f" ⚠ No fields found for the entity '{name}' in entities.csv")
+            logger.info(f" ⚠ No fields found for the entity '{name}' in entities.csv")
             sys.exit(1)
-        print(f"Generating Entity {name} from CSV architecture...")
+        logger.info(f"Generating Entity {name} from CSV architecture...")
         gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
         computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == name.strip()]
         if not computed_traits_list:
@@ -242,7 +246,7 @@ def _generate_single_entity(name: str) -> None:
 
 
 def _finalize_composition_relationships() -> None:
-    print("\n[⚡] PHASE 1.5: Finalizing Composition relationships...")
+    logger.info("\n[⚡] PHASE 1.5: Finalizing Composition relationships...")
     relations_path = Path("relations.csv")
     if not relations_path.exists():
         return
@@ -262,7 +266,7 @@ def _finalize_composition_relationships() -> None:
                 continue
             src_content = src_file_path.read_text(encoding="utf-8")
             if f"private {tgt_class} {f_name};" not in src_content:
-                print(f" 🔗 Finalizing @Composition 1:1 in {src_class}")
+                logger.info(f" 🔗 Finalizing @Composition 1:1 in {src_class}")
                 sql_fk_col = f"{f_name.upper()}_ID"
                 comp_field = f'    @Composition\n    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
                 comp_caps = f_name[0].upper() + f_name[1:]
@@ -290,7 +294,7 @@ def _finalize_composition_relationships() -> None:
             tgt_content = tgt_file_path.read_text(encoding="utf-8")
             inv_field_name = src_class[0].lower() + src_class[1:]
             if f"private {src_class} {inv_field_name};" not in tgt_content:
-                print(f" 🔗 Finalizing inverse 1:1 in {tgt_class}")
+                logger.info(f" 🔗 Finalizing inverse 1:1 in {tgt_class}")
                 inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{f_name}")\n    private {src_class} {inv_field_name};\n\n'
                 inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
                 inv_methods = f"    public {src_class} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
@@ -336,29 +340,29 @@ def _finalize_composition_relationships() -> None:
             fk_dir.mkdir(parents=True, exist_ok=True)
             fk_file = fk_dir / f"03-fk-{src_class.lower()}.xml"
             fk_file.write_text(fk_changelog, encoding="utf-8")
-            print(f" 🔗 Added FK constraint changelog: {fk_file}")
-    print("\n✅ Entity generation completed!")
+            logger.info(f" 🔗 Added FK constraint changelog: {fk_file}")
+    logger.info("\n✅ Entity generation completed!")
 
 
 def _update_menu(n: str) -> None:
-    print("Updating menu.xml for " + n + "...")
+    logger.info("Updating menu.xml for " + n + "...")
     menu_path = (
         PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "menu.xml"
     )
     if not menu_path.exists():
-        print(f"⚠️ I not found the file menu.xml in the path {menu_path}!")
+        logger.warning(f"⚠️ I not found the file menu.xml in the path {menu_path}!")
         return
     menu_item = f'    <item view="{n}.list" title="msg://{COMPANY}.{project_name}.view.{n.lower()}/{n.lower()}ListView.title"/>\n'
     content = menu_path.read_text(encoding="utf-8")
     if ('view="' + n + '.list"') in content:
-        print("ℹ️ View " + n + ".list allready exist in menu.")
+        logger.info("ℹ️ View " + n + ".list allready exist in menu.")
         return
     if "</menu>" in content:
         new_content = content.replace("</menu>", menu_item + "</menu>")
         menu_path.write_text(new_content, encoding="utf-8")
-        print("Menu injected successfully into menu.xml!")
+        logger.info("Menu injected successfully into menu.xml!")
     else:
-        print("⚠️ Invalid structure for menu.xml (missing closing </menu> tag)!")
+        logger.warning("⚠️ Invalid structure for menu.xml (missing closing </menu> tag)!")
 
 
 def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en") -> None:
@@ -369,28 +373,28 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
     lang_suffix = lang_input.strip()
     lang_key_for_map = lang_suffix
 
-    print(f"\n[*] Initializing New Jmix Project: '{project_name}'")
-    print(f"[*] Group ID:                 {target_group}")
-    print(f"[*] Generated Base Package:   {base_package}")
-    print(f"[*] Requested Locale:         {lang_suffix}")
-    print("-" * 60)
+    logger.info(f"\n[*] Initializing New Jmix Project: '{project_name}'")
+    logger.info(f"[*] Group ID:                 {target_group}")
+    logger.info(f"[*] Generated Base Package:   {base_package}")
+    logger.info(f"[*] Requested Locale:         {lang_suffix}")
+    logger.info("-" * 60)
 
     if target_dir.exists():
-        print(f"[-] Critical Error: Folder '{project_name}' already exists in this directory.")
+        logger.error(f"[-] Critical Error: Folder '{project_name}' already exists in this directory.")
         sys.exit(1)
 
-    print("[*] Step 1: Downloading Jmix starter template...")
+    logger.info("[*] Step 1: Downloading Jmix starter template...")
     try:
         subprocess.run(
             ["git", "clone", "--depth", "1", "-b", "v2.8.2", repo_url, project_name],
             check=True,
         )
     except Exception as e:
-        print(f"[-] Critical Error executing Git clone: {e}")
+        logger.error(f"[-] Critical Error executing Git clone: {e}")
         sys.exit(1)
 
     shutil.rmtree(target_dir / ".git", ignore_errors=True)
-    print("[+] Git template history cleared successfully.")
+    logger.info("[+] Git template history cleared successfully.")
 
     old_package_dots = "io.jmix.tempate"
     old_package_slashes = "io/jmix/tempate"
@@ -403,7 +407,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
         (target_dir / "src" / "main" / "resources", old_package_slashes, new_package_slashes),
     ]
 
-    print("[*] Step 2: Refactoring structural Java source layers and XML resources...")
+    logger.info("[*] Step 2: Refactoring structural Java source layers and XML resources...")
     for base_root, old_rel, new_rel in paths_to_move:
         src_dir = base_root / old_rel
         dst_dir = base_root / new_rel
@@ -413,7 +417,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
                 shutil.move(str(item), str(dst_dir / item.name))
             shutil.rmtree(base_root / "io", ignore_errors=True)
 
-    print("[*] Step 3: Injecting metadata and localization configuration dependencies...")
+    logger.info("[*] Step 3: Injecting metadata and localization configuration dependencies...")
     build_gradle_path = target_dir / "build.gradle"
     app_properties_path = target_dir / "src" / "main" / "resources" / "application.properties"
 
@@ -436,7 +440,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
                     "dependencies {",
                     f"dependencies {{{addon_dependency} // Automatically configured via Jmix CLI",
                 )
-                print(f"[+] Injected localization add-on dependency: jmix-translations-{addon_suffix}")
+                logger.info(f"[+] Injected localization add-on dependency: jmix-translations-{addon_suffix}")
         build_gradle_path.write_text(gradle_content, encoding="utf-8")
 
     if app_properties_path.exists():
@@ -447,7 +451,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
                     r"jmix\.core\.available-locales\s*=\s*(.*)",
                     f"jmix.core.available-locales = \\1,{lang_suffix}",
                 )
-                print(f"[+] Updated active core locales property: en,{lang_suffix}")
+                logger.info(f"[+] Updated active core locales property: en,{lang_suffix}")
         else:
             locales_line = "\njmix.core.available-locales = en"
             if lang_key_for_map != "en":
@@ -463,7 +467,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
         custom_messages_path = msg_dir / f"messages_{lang_suffix}.properties"
         if template_eng_msg_path.exists() and not base_fallback_msg_path.exists():
             shutil.copy2(template_eng_msg_path, base_fallback_msg_path)
-            print("[+] Generated standard base fallback file: messages.properties")
+            logger.info("[+] Generated standard base fallback file: messages.properties")
         if not custom_messages_path.exists():
             if template_eng_msg_path.exists():
                 shutil.copy2(template_eng_msg_path, custom_messages_path)
@@ -473,13 +477,13 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
                     + content,
                     encoding="utf-8",
                 )
-                print(f"[+] Created localized bundle twin with English base: messages_{lang_suffix}.properties")
+                logger.info(f"[+] Created localized bundle twin with English base: messages_{lang_suffix}.properties")
             else:
                 custom_messages_path.write_text(
                     f"# Custom localization translations properties file for: {lang_suffix}\n",
                     encoding="utf-8",
                 )
-                print(f"[+] Initialized empty bundle (messages_en.properties was missing): messages_{lang_suffix}.properties")
+                logger.info(f"[+] Initialized empty bundle (messages_en.properties was missing): messages_{lang_suffix}.properties")
 
     files_to_update = [target_dir / "settings.gradle", app_properties_path]
     for base_root, _, new_rel in paths_to_move:
@@ -507,35 +511,38 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
     if gradlew_path.exists():
         os.chmod(gradlew_path, 0o755)
 
-    print("[*] Step 3: Initializing a fresh Git repository...")
+    logger.info("[*] Step 3: Initializing a fresh Git repository...")
     try:
         subprocess.run(["git", "init"], cwd=target_dir, check=True)
         subprocess.run(["git", "add", "."], cwd=target_dir, check=True)
         subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=target_dir, check=True)
-        print("✅ Project initialized successfully with a fresh Git history!")
+        logger.info("✅ Project initialized successfully with a fresh Git history!")
     except subprocess.CalledProcessError:
-        print("Warning: Template was cloned, but failed to initialize fresh Git repository automatically.")
+        logger.warning("Warning: Template was cloned, but failed to initialize fresh Git repository automatically.")
 
-    print("\n" + "=" * 60)
-    print(f"[+] SUCCESS: Jmix project '{project_name}' successfully initialized!")
-    print(f"[+] Target core locale: {lang_suffix}")
-    print(f"[+] Run command: cd {project_name} && ./gradlew bootRun")
-    print("=" * 60 + "\n")
+    logger.info("\n" + "=" * 60)
+    logger.info(f"[+] SUCCESS: Jmix project '{project_name}' successfully initialized!")
+    logger.info(f"[+] Target core locale: {lang_suffix}")
+    logger.info(f"[+] Run command: cd {project_name} && ./gradlew bootRun")
+    logger.info("=" * 60 + "\n")
 
 
 def print_cli_help() -> None:
-    print("\n🚀 JMIX CLI - UNIFIED COMMAND HELP")
-    print("-" * 50)
-    print("Initialize a new clean standard Jmix template:")
-    print("  python jmix-cli.py init <project_name> <target_group> [locale]")
-    print("  -> Example: python jmix-cli.py init onboarding com.florin ro_RO")
-    print("\nGenerate layers from CSV schema (existing engine):")
-    print("  Run without parameters inside a valid Jmix directory hierarchy")
-    print("  to process traits.csv, entities.csv, and relations.csv schemas.")
-    print("\nDry-run mode:")
-    print("  Append --dry-run to any generation command to generate in a temporary directory.")
-    print("  Example: python jmix-cli.py build-all --dry-run")
-    print("-" * 50 + "\n")
+    logger.info("\n🚀 JMIX CLI - UNIFIED COMMAND HELP")
+    logger.info("-" * 50)
+    logger.info("Initialize a new clean standard Jmix template:")
+    logger.info("  python jmix-cli.py init <project_name> <target_group> [locale]")
+    logger.info("  -> Example: python jmix-cli.py init onboarding com.florin ro_RO")
+    logger.info("\nGenerate layers from CSV schema (existing engine):")
+    logger.info("  Run without parameters inside a valid Jmix directory hierarchy")
+    logger.info("  to process traits.csv, entities.csv, and relations.csv schemas.")
+    logger.info("\nDry-run mode:")
+    logger.info("  Append --dry-run to any generation command to generate in a temporary directory.")
+    logger.info("  Example: python jmix-cli.py build-all --dry-run")
+    logger.info("\nVerbosity options:")
+    logger.info("  --verbose / -v    Enable debug output")
+    logger.info("  --quiet / -q      Suppress info output, show only warnings and errors")
+    logger.info("-" * 50 + "\n")
 
 
 def main() -> None:
@@ -544,16 +551,28 @@ def main() -> None:
     original_dir = Path.cwd()
 
     if dry_run and len(sys.argv) > 1 and sys.argv[1].lower() == "init":
-        print("[-] Error: --dry-run nu este suportat pentru 'init'.")
+        logger.error("[-] Error: --dry-run nu este suportat pentru 'init'.")
         print_cli_help()
         sys.exit(1)
 
     if dry_run:
         sys.argv = [arg for arg in sys.argv if arg != "--dry-run"]
 
+    verbose = "--verbose" in sys.argv or "-v" in sys.argv
+    quiet = "--quiet" in sys.argv or "-q" in sys.argv
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Verbose mode enabled.")
+    elif quiet:
+        logging.getLogger().setLevel(logging.WARNING)
+    else:
+        logging.getLogger().setLevel(logging.INFO)
+    if verbose or quiet:
+        sys.argv = [arg for arg in sys.argv if arg not in ("--verbose", "-v", "--quiet", "-q")]
+
     if len(sys.argv) != 1 and sys.argv[1].lower() == "init":
         if len(sys.argv) == 2 or len(sys.argv) == 3:
-            print("[-] Error: Missing required arguments.")
+            logger.error("[-] Error: Missing required arguments.")
             print_cli_help()
             sys.exit(1)
         p_name = sys.argv[2]
@@ -566,16 +585,16 @@ def main() -> None:
         print_cli_help()
         sys.exit(0)
 
-    print(f"[*] Run Jmix CLI engine generation on the current project: '{PROJECT}'...")
+    logger.info(f"[*] Run Jmix CLI engine generation on the current project: '{PROJECT}'...")
 
     if not PROJECT:
-        print("[-] No valid Jmix project detected in this folder.")
+        logger.error("[-] No valid Jmix project detected in this folder.")
         print_cli_help()
         sys.exit(1)
 
     if dry_run:
         if len(sys.argv) == 1:
-            print("[-] Error: --dry-run needs a command.")
+            logger.error("[-] Error: --dry-run needs a command.")
             print_cli_help()
             sys.exit(1)
         dry_run_temp_dir = _copy_project_to_temp()
@@ -583,21 +602,21 @@ def main() -> None:
         _patch_globals_for_dry_run(dry_run_temp_dir)
 
     if len(sys.argv) == 1:
-        print("=" * 70)
-        print("JMIX CLI - Command Reference")
-        print("=" * 70)
-        print("Available commands:")
-        print("  python3 jmix-cli.py entity-all   - Generate ALL entities + liquibase")
-        print("  python3 jmix-cli.py entity <Name> - Generate single entity")
-        print("  python3 jmix-cli.py security      - Generate security roles")
-        print("  python3 jmix-cli.py ui-list-all   - Generate ALL list views")
-        print("  python3 jmix-cli.py ui-list <Name> - Generate single list view")
-        print("  python3 jmix-cli.py ui-detail-all - Generate ALL detail views")
-        print("  python3 jmix-cli.py ui-detail <Name> - Generate single detail view")
-        print("  python3 jmix-cli.py build-all     - Full generation (all phases)")
-        print("\nOptions:")
-        print("  --dry-run    Generate in a temporary project directory without modifying the current project")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("JMIX CLI - Command Reference")
+        logger.info("=" * 70)
+        logger.info("Available commands:")
+        logger.info("  python3 jmix-cli.py entity-all   - Generate ALL entities + liquibase")
+        logger.info("  python3 jmix-cli.py entity <Name> - Generate single entity")
+        logger.info("  python3 jmix-cli.py security      - Generate security roles")
+        logger.info("  python3 jmix-cli.py ui-list-all   - Generate ALL list views")
+        logger.info("  python3 jmix-cli.py ui-list <Name> - Generate single list view")
+        logger.info("  python3 jmix-cli.py ui-detail-all - Generate ALL detail views")
+        logger.info("  python3 jmix-cli.py ui-detail <Name> - Generate single detail view")
+        logger.info("  python3 jmix-cli.py build-all     - Full generation (all phases)")
+        logger.info("\nOptions:")
+        logger.info("  --dry-run    Generate in a temporary project directory without modifying the current project")
+        logger.info("=" * 70)
         sys.exit(1)
 
     action = sys.argv[1].lower()
@@ -607,9 +626,9 @@ def main() -> None:
         _finish_dry_run(dry_run_temp_dir, original_dir)
 
     elif action == "entity-all":
-        print("[*] Launching ENTITY-ONLY generation for ALL entities...")
+        logger.info("[*] Launching ENTITY-ONLY generation for ALL entities...")
         ordered_list = get_sorted_entities_by_dependency()
-        print(f"[*] Calculated generation sequence: {ordered_list}")
+        logger.info(f"[*] Calculated generation sequence: {ordered_list}")
         for ent in ordered_list:
             if ent == "User":
                 relations_list = get_relations_from_csv("relations.csv", "User")
@@ -638,7 +657,7 @@ def main() -> None:
                     update_messages_entity(
                         ".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list
                     )
-        print("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+        logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
         for ent in ordered_list:
             relations_list = get_relations_from_csv("relations.csv", ent)
             composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
@@ -648,45 +667,45 @@ def main() -> None:
         _finish_dry_run(dry_run_temp_dir, original_dir)
 
     elif action == "ui-list-all":
-        print("[*] Launching UI-LIST generation for ALL entities...")
+        logger.info("[*] Launching UI-LIST generation for ALL entities...")
         ordered_list = get_sorted_entities_by_dependency()
         for ent in ordered_list:
             fields_list = get_entities_from_csv("entities.csv", ent)
             relations_list = get_relations_from_csv("relations.csv", ent)
             if fields_list:
                 gen_list_view_from_csv(ent, fields_list, relations_list)
-        print("\n✅ UI List views generation completed!")
+        logger.info("\n✅ UI List views generation completed!")
         _finish_dry_run(dry_run_temp_dir, original_dir)
 
     elif action == "ui-detail-all":
-        print("[*] Launching UI-DETAIL generation for ALL entities...")
+        logger.info("[*] Launching UI-DETAIL generation for ALL entities...")
         ordered_list = get_sorted_entities_by_dependency()
         for ent in ordered_list:
             fields_list = get_entities_from_csv("entities.csv", ent)
             relations_list = get_relations_from_csv("relations.csv", ent)
             if fields_list:
                 gen_detail_view_from_csv(ent, fields_list, relations_list)
-        print("\n✅ UI Detail views generation completed!")
+        logger.info("\n✅ UI Detail views generation completed!")
         _finish_dry_run(dry_run_temp_dir, original_dir)
 
     elif action == "build-all":
-        print("\n" + "=" * 70)
-        print("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL INDUSTRIAL SEQUENCE...")
-        print("=" * 70)
+        logger.info("\n" + "=" * 70)
+        logger.info("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL INDUSTRIAL SEQUENCE...")
+        logger.info("=" * 70)
         ordered_list = get_sorted_entities_by_dependency()
-        print(f"[*] Calculated execution flow pipeline: {ordered_list}\n")
+        logger.info(f"[*] Calculated execution flow pipeline: {ordered_list}\n")
 
-        print("[⚡] PHASE 1: Scaffolding Data Models and Database Changelogs...")
+        logger.info("[⚡] PHASE 1: Scaffolding Data Models and Database Changelogs...")
         for ent in ordered_list:
             if ent == "User":
-                print("👤 System User discovered in pipeline. Triggering surgical relationship infiltration...")
+                logger.info("👤 System User discovered in pipeline. Triggering surgical relationship infiltration...")
                 relations_list = get_relations_from_csv("relations.csv", "User")
                 if relations_list:
                     gen_liquibase_relations_changelog("User", relations_list)
                     inject_relations_into_existing_user("User", relations_list)
                     update_messages_entity(".", COMPANY + "." + project_name, "User", [], relations_list)
             else:
-                print(f"   ▶️ Building Domain Model: {ent}")
+                logger.info(f"   ▶️ Building Domain Model: {ent}")
                 traits = get_traits_from_csv("traits.csv", ent)
                 fields_list = get_entities_from_csv("entities.csv", ent)
                 relations_list = get_relations_from_csv("relations.csv", ent)
@@ -700,7 +719,7 @@ def main() -> None:
                         computed_traits_list = ["name"]
                     update_messages_entity(".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list)
 
-        print("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+        logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
         for ent in ordered_list:
             relations_list = get_relations_from_csv("relations.csv", ent)
             composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
@@ -710,15 +729,15 @@ def main() -> None:
         _finalize_composition_relationships()
 
         # Inject relationships into existing User entity (Jmix built-in)
-        print("\n[⚡] PHASE 1.7: Injecting relationships into system User entity...")
+        logger.info("\n[⚡] PHASE 1.7: Injecting relationships into system User entity...")
         if "User" in ordered_list:
             user_rels = get_relations_from_csv("relations.csv", "User")
             if user_rels:
                 inject_relations_into_existing_user("User", user_rels)
 
-        print("\n[⚡] PHASE 2: Architecturing FlowUI Screen Descriptors & Controllers...")
+        logger.info("\n[⚡] PHASE 2: Architecturing FlowUI Screen Descriptors & Controllers...")
         for ent in ordered_list:
-            print(f"   📺 Compiling Layout XML and Java Views for: {ent}")
+            logger.info(f"   📺 Compiling Layout XML and Java Views for: {ent}")
             if ent == "User":
                 relations_list = get_relations_from_csv("relations.csv", "User")
                 if relations_list:
@@ -741,17 +760,17 @@ def main() -> None:
         inject_nn_grid_into_inverse_entity(all_relations)
         inject_nn_datagrid_into_source_entity(all_relations)
 
-        print("\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter...")
+        logger.info("\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter...")
         gen_jmix_resource_roles_from_csv()
 
-        print("\n" + "=" * 70)
-        print("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
-        print("=" * 70 + "\n")
+        logger.info("\n" + "=" * 70)
+        logger.info("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
+        logger.info("=" * 70 + "\n")
         _finish_dry_run(dry_run_temp_dir, original_dir)
 
     if len(sys.argv) == 2:
-        print("[-] Error: Missing required Entity Name parameter.")
-        print("Usage: python3 jmix-cli.py [entity|ui-list|ui-detail] [Name]")
+        logger.error("[-] Error: Missing required Entity Name parameter.")
+        logger.info("Usage: python3 jmix-cli.py [entity|ui-list|ui-detail] [Name]")
         sys.exit(1)
 
     name = sys.argv[2]
@@ -761,33 +780,33 @@ def main() -> None:
 
     elif action == "ui-list":
         if name == "User":
-            print("[*] Triggering FlowUI List View infiltration for system User...")
+            logger.info("[*] Triggering FlowUI List View infiltration for system User...")
             relations_list = get_relations_from_csv("relations.csv", "User")
             inject_list_ui_into_existing_user(relations_list)
         else:
             fields_list = get_entities_from_csv("entities.csv", name)
             relations_list = get_relations_from_csv("relations.csv", name)
             if not fields_list:
-                print(f" ⚠️ Error: Fields for entity '{name}' do not exist in entities.csv")
+                logger.info(f" ⚠️ Error: Fields for entity '{name}' do not exist in entities.csv")
                 sys.exit(1)
             gen_list_view_from_csv(name, fields_list, relations_list)
             _update_menu(name)
 
     elif action == "ui-detail":
         if name == "User":
-            print("[*] Triggering FlowUI Detail View infiltration for system User...")
+            logger.info("[*] Triggering FlowUI Detail View infiltration for system User...")
             relations_list = get_relations_from_csv("relations.csv", "User")
             inject_detail_ui_into_existing_user(relations_list)
         else:
             fields_list = get_entities_from_csv("entities.csv", name)
             relations_list = get_relations_from_csv("relations.csv", name)
             if not fields_list:
-                print(f" ⚠️ Error: Fields for '{name}' do not exist in entities.csv")
+                logger.info(f" ⚠️ Error: Fields for '{name}' do not exist in entities.csv")
                 sys.exit(1)
             gen_detail_view_from_csv(name, fields_list, relations_list)
 
     else:
-        print(f" ⚠️ Unknown action: '{action}'. Use entity, ui-list, ui-detail or security.")
+        logger.info(f" ⚠️ Unknown action: '{action}'. Use entity, ui-list, ui-detail or security.")
         sys.exit(1)
 
     _finish_dry_run(dry_run_temp_dir, original_dir)
