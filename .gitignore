@@ -31,3 +31,6 @@ webpack.generated.js
 .DS_Store
 
 bin/
+*.pyc
+.kilo/*
+.pool/*
