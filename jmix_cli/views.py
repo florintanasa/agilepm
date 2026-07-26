@@ -531,16 +531,19 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
             buttons_block += f'            <button action="{grid_id}.add"/>\n'
             buttons_block += f'            <button action="{grid_id}.exclude"/>\n'
             buttons_block += "        </hbox>\n"
-            grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{container_id}"\n                      width="100%" maxHeight="15rem">\n'
-            grid_block += "            <actions>\n"
-            grid_block += '                <action id="add" type="list_add"/>\n'
-            grid_block += '                <action id="exclude" type="list_exclude"/>\n'
-            grid_block += "            </actions>\n"
-            grid_block += "            <columns>\n"
+            grid_block = f'        <vbox>\n'
+            grid_block += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
+            grid_block += f'            <dataGrid id="{grid_id}" dataContainer="{container_id}"\n                      width="100%" maxHeight="15rem">\n'
+            grid_block += "                <actions>\n"
+            grid_block += '                    <action id="add" type="list_add"/>\n'
+            grid_block += '                    <action id="exclude" type="list_exclude"/>\n'
+            grid_block += "                </actions>\n"
+            grid_block += "                <columns>\n"
             for col in column_props:
-                grid_block += f'                <column property="{col}"/>\n'
-            grid_block += "            </columns>\n"
-            grid_block += "        </dataGrid>\n"
+                grid_block += f'                    <column property="{col}"/>\n'
+            grid_block += "                </columns>\n"
+            grid_block += f'            </dataGrid>\n'
+            grid_block += f'        </vbox>\n'
         elif ownership == "owning":
             buttons_block = ""
             grid_block = f'        <vbox>\n'
