@@ -59,26 +59,21 @@ def _inject_nn(content: str, rel: dict[str, Any]) -> str:
     if f"private List<{tgt_class}> {f_name};" in content or f"private Collection<{tgt_class}> {f_name};" in content:
         return content
     ownership = rel.get("ownership", "owning")
-    is_owning = ownership in ("owning", "both-owning")
-    if is_owning:
-        join_table = f"USER_{tgt_class.upper()}_LINK"
-        src_fk = "USER_ID"
-        tgt_fk = f"{tgt_class.upper()}_ID"
-        field = "    @ManyToMany\n"
-        field += f'    @JoinTable(name = "{join_table}",\n'
-        field += f'            joinColumns = @JoinColumn(name = "{src_fk}"),\n'
-        field += f'            inverseJoinColumns = @JoinColumn(name = "{tgt_fk}"))\n'
-    else:
-        inv_field_name = "users"
-        field = f'    @ManyToMany(mappedBy = "{inv_field_name}")\n'
+    # User (source) always has @JoinTable for N:N - this is the owning side
+    join_table = f"USER_{tgt_class.upper()}_LINK"
+    src_fk = "USER_ID"
+    tgt_fk = f"{tgt_class.upper()}_ID"
+    field = "    @ManyToMany\n"
+    field += f'    @JoinTable(name = "{join_table}",\n'
+    field += f'            joinColumns = @JoinColumn(name = "{src_fk}"),\n'
+    field += f'            inverseJoinColumns = @JoinColumn(name = "{tgt_fk}"))\n'
     field += f"    private List<{tgt_class}> {f_name};\n\n"
     caps = f_name[0].upper() + f_name[1:] if len(f_name) > 1 else f_name.upper()
     methods = f"    public List<{tgt_class}> get{caps}() {{\n        return {f_name};\n    }}\n\n"
     methods += f"    public void set{caps}(List<{tgt_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
     content = _ensure_import(content, "jakarta.persistence.ManyToMany")
-    if is_owning:
-        content = _ensure_import(content, "jakarta.persistence.JoinTable")
-        content = _ensure_import(content, "jakarta.persistence.JoinColumn")
+    content = _ensure_import(content, "jakarta.persistence.JoinTable")
+    content = _ensure_import(content, "jakarta.persistence.JoinColumn")
     content = _ensure_import(content, "java.util.List")
     last_brace = content.rfind("}")
     if last_brace == -1:
