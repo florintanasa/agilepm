@@ -543,12 +543,15 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, Any]]) -> 
             grid_block += "        </dataGrid>\n"
         elif ownership == "owning":
             buttons_block = ""
-            grid_block = f'        <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
-            grid_block += "            <columns>\n"
+            grid_block = f'        <vbox>\n'
+            grid_block += f'            <h3 text="msg://com.company.agilepm.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
+            grid_block += f'            <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
+            grid_block += "                <columns>\n"
             for col in column_props:
-                grid_block += f'                <column property="{col}"/>\n'
-            grid_block += "            </columns>\n"
-            grid_block += "        </dataGrid>\n"
+                grid_block += f'                    <column property="{col}"/>\n'
+            grid_block += "                </columns>\n"
+            grid_block += f'            </dataGrid>\n'
+            grid_block += f'        </vbox>\n'
         else:
             # single-owning: no UI for target entity
             continue
