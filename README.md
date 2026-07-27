@@ -111,8 +111,8 @@ The system consists of 9 custom entities built on top of the standard Jmix `User
 ### Relationship Types
 
 - **COMPOSITION (1:N, 1:1)**: Parent-child relationship where child lifecycle is tied to parent. Deleting parent cascades to children.
-- **ASSOCIATION (N:1, N:N)**: Regular relationship without cascade delete.
-- **MANY_TO_MANY**: Implemented via junction table with composite unique index.
+- **ASSOCIATION (N:1, 1:1)**: Regular relationship without cascade delete. For 1:1, both sides are defined in `relations.csv` so each entity gets a bidirectional navigation property.
+- **MANY_TO_MANY**: Implemented via junction table. The `ownership` column controls whether one side or both sides manage the junction table and receive an editable dataGrid in the detail view.
 
 ## Configuration Files
 
@@ -147,10 +147,13 @@ Defines relationships between entities:
 | Column | Description |
 |--------|-------------|
 | `source_entity` | Source entity class name |
-| `relation_type` | COMPOSITION_1:N, COMPOSITION_1:1, N:1, N:N |
+| `relation_type` | COMPOSITION_1:N, COMPOSITION_1:1, N:1, 1:1, N:N |
 | `target_entity` | Target entity class name |
 | `field_name` | Field name in source entity |
 | `mandatory` | NOT NULL constraint on FK column |
+| `ownership` | For N:N only: `owning` (source owns junction table), `both-owning` (both sides own), empty/omit for inverse/mappedBy |
+
+> Note: For `1:1`, the relation is defined **twice**: once from the source side with `field_name`, and once from the target side with the inverse `field_name`. This ensures bidirectional navigation on both sides.
 
 ### roles.csv - Security Roles Configuration
 
@@ -171,6 +174,17 @@ Defines role-based access control:
 ## Jmix CLI Tool
 
 `jmix-cli.py` is a parametric code generator that creates Jmix entities, views, Liquibase changelogs, messages, and security roles from CSV configuration files.
+
+### Installation
+
+```bash
+# Install in editable mode
+pip install -e .
+# Run via entry point
+jmix-cli --help
+# Or directly
+python jmix-cli.py --help
+```
 
 ### Usage
 
@@ -198,6 +212,29 @@ python3 jmix-cli.py security
 python3 jmix-cli.py build-all
 ```
 
+## Python Package
+
+The `jmix-cli` command is distributed as a Python package defined by `pyproject.toml`:
+
+- **Build backend:** `setuptools`
+- **Python:** >= 3.10
+- **Dependencies:** stdlib only (`http.client`, `json`, `csv`, `pathlib`, etc.)
+- **Entry point:** `jmix-cli = "jmix_cli.cli:main"`
+
+After `pip install -e .`, the tool is available as `jmix-cli` anywhere on the PATH.
+
+### Error Handling
+
+The CLI uses a centralized exception hierarchy (`jmix_cli/exceptions.py`) instead of scattering `sys.exit()` through generators:
+
+- `JmixCliError` — base
+- `ConfigurationError` — missing/invalid project or CSV
+- `GenerationError` — code generation failures
+- `UserInputError` — bad arguments or missing parameters
+- `InvalidCsvError` — CSV missing or schema mismatch
+
+All module-level errors are raised as exceptions. `cli.py` catches them in one place and logs a consistent message before exiting.
+
 ### Generated Artifacts
 
 Running `build-all` creates:
@@ -217,6 +254,9 @@ Running `build-all` creates:
    - List views extending `StandardListView`
    - Detail views extending `StandardDetailView`
    - DataGrid columns for all fields
+   - N:N detail views depend on `ownership`:
+     - `owning` / empty: source gets `multiSelectComboBoxPicker`, inverse target gets a read-only `dataGrid`
+     - `both-owning`: both sides get `dataGrid` with add/remove actions; the `multiSelectComboBoxPicker` is removed
 
 4. **Messages** (`messages.properties`, `messages_ro.properties`)
    - Entity labels and field names
