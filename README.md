@@ -46,6 +46,8 @@ classDiagram
         +String firstName
         +String lastName
         +Team team
+        +UserProfile profile
+        +List<Priority> priorities
     }
     class UserProfile {
         +UUID id
@@ -75,9 +77,11 @@ classDiagram
     Task "N" --> "1" Priority : FK priority_id
     TaskComment "N" --> "1" User : FK author_id
     User "N" --> "1" Team : FK team_id
+    User "1" --> "1" UserProfile : FK profile_id
     UserProfile "1" --> "1" User : FK user_id
     UserProfile "1" *-- "1" UserConfig : COMPOSITION
-    Team "N" ..> "N" Client : TEAM_CLIENT_LINK
+    User "N" -- "N" Priority : USER_PRIORITY_LINK
+    Team "N" -- "N" Client : TEAM_CLIENT_LINK
 ```
 
 ## Domain Model
@@ -100,7 +104,7 @@ The system consists of 9 custom entities built on top of the standard Jmix `User
 |--------|-------------|--------|
 | **Team** | Development team | name |
 | **Client** | Client organization | companyName |
-| **User** | Extended from Jmix User | username, firstName, lastName, team (N:1) |
+| **User** | Extended from Jmix User | username, firstName, lastName, team (N:1), profile (1:1), priorities (N:N) |
 | **UserProfile** | User profile (1:1 with User) | phoneNumber, user |
 | **UserConfig** | User preferences (composition with UserProfile) | theme, profile |
 
@@ -285,7 +289,7 @@ To test the users roles we can use next credentials:
 | Project | true | true | true | true |
 | Milestone | true | true | true | false |
 | Task | true | true | true | true |
-| TaskComment | true | false | false | false |
+| TaskComment | true | true | false | false |
 | Priority | true | false | false | false |
 | UserProfile | true | true | true | false |
 | UserConfig | true | false | false | false |
@@ -311,20 +315,22 @@ To test the users roles we can use next credentials:
 
 ### relations.csv - Entity Relationships Configuration
 
-| source_entity | relation_type | target_entity | field_name | mandatory |
-|---------------|-------------|---------------|------------|-----------|
-| Milestone | COMPOSITION_1:N | Project | milestones | true |
-| Milestone | N:1 | Project | project | true |
-| Task | N:1 | Milestone | milestone | false |
-| TaskComment | COMPOSITION_1:N | Task | comments | false |
-| TaskComment | N:1 | Task | task | true |
-| Task | N:1 | User | assignee | false |
-| Task | N:1 | Priority | priority | true |
-| TaskComment | N:1 | User | author | true |
-| User | N:1 | Team | team | false |
-| UserProfile | 1:1 | User | user | true |
-| UserConfig | COMPOSITION_1:1 | UserProfile | profile | true |
-| Team | N:N | Client | clients | false |
+| source_entity | relation_type | target_entity | field_name | mandatory | ownership |
+|---------------|-------------|---------------|------------|-----------|-----------|
+| Milestone | COMPOSITION_1:N | Project | milestones | true |  |
+| Milestone | N:1 | Project | project | true |  |
+| Task | N:1 | Milestone | milestone | false |  |
+| TaskComment | COMPOSITION_1:N | Task | comments | false |  |
+| TaskComment | N:1 | Task | task | true |  |
+| Task | N:1 | User | assignee | false |  |
+| Task | N:1 | Priority | priority | true |  |
+| TaskComment | N:1 | User | author | true |  |
+| User | N:1 | Team | team | false |  |
+| User | N:N | Priority | priorities | false | owning |
+| User | 1:1 | UserProfile | profile | false |  |
+| UserProfile | 1:1 | User | user | true |  |
+| UserConfig | COMPOSITION_1:1 | UserProfile | profile | true |  |
+| Team | N:N | Client | clients | false | both-owning |
 
 ### roles.csv - Security Roles Configuration
 
