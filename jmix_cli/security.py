@@ -28,6 +28,7 @@ import csv
 from pathlib import Path
 from typing import Any
 
+from jmix_cli.exceptions import ConfigurationError
 from jmix_cli.utils import get_logger
 from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, project_name, validate_csv_path, write_file
 
@@ -37,8 +38,7 @@ logger = get_logger("jmix_cli.security")
 def gen_jmix_resource_roles_from_csv() -> None:
     roles_file = Path("roles.csv")
     if not roles_file.exists():
-        logger.error(f"[-] Error: roles.csv configuration file not found.")
-        raise FileNotFoundError("roles.csv")
+        raise ConfigurationError("roles.csv configuration file not found.")
 
     validate_csv_path("roles.csv", ["name", "code", "entity_name", "ui_list", "ui_detail", "create", "read", "update", "delete"])
 

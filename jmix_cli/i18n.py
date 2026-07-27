@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from jmix_cli.utils import get_logger
+from jmix_cli.exceptions import ConfigurationError, GenerationError
 from jmix_cli.utils import COMPANY, PROIECT_PATH, append_unique, company_path, project_name, validate_csv_path
 
 logger = get_logger("jmix_cli.i18n")
@@ -48,7 +49,7 @@ def _load_cache() -> None:
     if _CACHE_FILE.exists():
         try:
             _translation_cache = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             _translation_cache = {}
     _cache_loaded = True
 
@@ -59,7 +60,7 @@ def _persist_cache() -> None:
             json.dumps(_translation_cache, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-    except Exception:
+    except OSError:
         pass
 
 
@@ -93,7 +94,7 @@ def ask_ollama_translation(text_to_translate: str, target_language_name: str) ->
             result = translated_text if translated_text else text_to_translate
             _translation_cache[key] = result
             return result
-    except Exception as e:
+    except (ConnectionError, TimeoutError, http.client.HTTPException, json.JSONDecodeError) as e:
         logger.error(f"[-] Ollama translation warning: {e}. Falling back to English.")
     return text_to_translate
 

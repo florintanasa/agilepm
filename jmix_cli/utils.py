@@ -31,6 +31,8 @@ import re
 import sys
 from pathlib import Path
 
+from jmix_cli.exceptions import InvalidCsvError
+
 PROIECT_PATH = Path.cwd()
 
 
@@ -85,16 +87,14 @@ def inject_import_if_missing(java_content: str, import_class: str) -> str:
 
 def validate_csv_path(csv_path: str, required_columns: list[str]) -> list[dict]:
     if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+        raise InvalidCsvError(csv_path)
     with open(csv_path, mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
-            raise ValueError(f"CSV file is empty: {csv_path}")
+            raise InvalidCsvError(csv_path, message=f"CSV file is empty: {csv_path}")
         missing = set(required_columns) - set(reader.fieldnames)
         if missing:
-            raise ValueError(
-                f"CSV file {csv_path} is missing required columns: {missing}"
-            )
+            raise InvalidCsvError(csv_path, missing_columns=sorted(list(missing)))
         return list(reader)
 
 

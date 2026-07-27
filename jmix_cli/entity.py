@@ -28,6 +28,7 @@ import csv
 from pathlib import Path
 from typing import Any
 
+from jmix_cli.exceptions import ConfigurationError, GenerationError, InvalidCsvError
 from jmix_cli.utils import get_logger
 from jmix_cli.utils import (
     COMPANY,
@@ -72,12 +73,11 @@ def get_traits_from_csv(csv_path: str, target_entity_name: str) -> dict[str, Any
 
 
 def get_entities_from_csv(csv_path: str, target_entity_name: str) -> list[dict[str, Any]]:
-    fields_list: list[dict[str, Any]] = []
     csv_file = Path(csv_path)
     if not csv_file.exists():
-        logger.info(f" ! Error: The file CSV was not found at : {csv_path}")
-        return fields_list
+        raise InvalidCsvError(csv_path, message=f"CSV file not found: {csv_path}")
     validate_csv_path(csv_path, ["entity_name", "field_name", "field_type", "mandatory", "unique"])
+    fields_list: list[dict[str, Any]] = []
     with csv_file.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -400,15 +400,10 @@ def get_relations_from_csv(csv_path: str, target_entity_name: str) -> list[dict[
     csv_file = Path(csv_path)
     if not csv_file.exists():
         return relations_list
-    # Validate headers - ownership is optional
+    required = ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"]
+    validate_csv_path(csv_path, required)
     with csv_file.open(mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        fieldnames = reader.fieldnames or []
-        required = ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"]
-        for req in required:
-            if req not in fieldnames:
-                logger.info(f" ! Error: Missing column '{req}' in relations.csv")
-                return relations_list
         for row in reader:
             if row["source_entity"].strip().lower() == target_entity_name.lower():
                 rel_dict = {
@@ -417,9 +412,8 @@ def get_relations_from_csv(csv_path: str, target_entity_name: str) -> list[dict[
                     "field": row["field_name"].strip(),
                     "mandatory": row["mandatory"].strip().lower() == "true",
                 }
-                # Add ownership if present
-                if "ownership" in fieldnames and row.get("ownership"):
-                    rel_dict["ownership"] = row["ownership"].strip()
+                if "ownership" in (reader.fieldnames or []):
+                    rel_dict["ownership"] = row.get("ownership", "").strip()
                 relations_list.append(rel_dict)
     return relations_list
 

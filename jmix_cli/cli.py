@@ -36,6 +36,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from jmix_cli.exceptions import JmixCliError, ConfigurationError, GenerationError, UserInputError
 from jmix_cli.utils import get_logger
 from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, validate_csv_path
 from jmix_cli.entity import (
@@ -202,7 +203,21 @@ def _finish_dry_run(temp_dir: Path | None, original_dir: Path | None = None) -> 
         _print_dry_run_summary(temp_dir, original_dir)
     elif temp_dir is not None:
         _print_dry_run_summary(temp_dir, temp_dir)
-    sys.exit(0)
+
+
+def _handle_error(error: Exception) -> None:
+    """Centralized error handler: log and exit with code 1."""
+    if isinstance(error, UserInputError):
+        logger.error(f"[-] {error}")
+    elif isinstance(error, ConfigurationError):
+        logger.error(f"[-] Configuration error: {error}")
+    elif isinstance(error, GenerationError):
+        logger.error(f"[-] Generation error: {error}")
+    elif isinstance(error, JmixCliError):
+        logger.error(f"[-] {error}")
+    else:
+        logger.error(f"[-] Unexpected error: {error}")
+    sys.exit(1)
 
 
 def _generate_single_entity(name: str) -> None:
@@ -226,8 +241,7 @@ def _generate_single_entity(name: str) -> None:
         fields_list = get_entities_from_csv("entities.csv", name)
         relations_list = get_relations_from_csv("relations.csv", name)
         if not fields_list:
-            logger.info(f" ⚠ No fields found for the entity '{name}' in entities.csv")
-            sys.exit(1)
+            raise UserInputError(f"No fields found for the entity '{name}' in entities.csv")
         logger.info(f"Generating Entity {name} from CSV architecture...")
         gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
         computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == name.strip()]
@@ -380,8 +394,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
     logger.info("-" * 60)
 
     if target_dir.exists():
-        logger.error(f"[-] Critical Error: Folder '{project_name}' already exists in this directory.")
-        sys.exit(1)
+        raise UserInputError(f"Folder '{project_name}' already exists in this directory.")
 
     logger.info("[*] Step 1: Downloading Jmix starter template...")
     try:
@@ -389,9 +402,8 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
             ["git", "clone", "--depth", "1", "-b", "v2.8.2", repo_url, project_name],
             check=True,
         )
-    except Exception as e:
-        logger.error(f"[-] Critical Error executing Git clone: {e}")
-        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        raise GenerationError(f"Git clone failed: {e}") from e
 
     shutil.rmtree(target_dir / ".git", ignore_errors=True)
     logger.info("[+] Git template history cleared successfully.")
@@ -550,267 +562,260 @@ def main() -> None:
     dry_run_temp_dir: Path | None = None
     original_dir = Path.cwd()
 
-    if dry_run and len(sys.argv) > 1 and sys.argv[1].lower() == "init":
-        logger.error("[-] Error: --dry-run nu este suportat pentru 'init'.")
-        print_cli_help()
-        sys.exit(1)
+    try:
+        if dry_run and len(sys.argv) > 1 and sys.argv[1].lower() == "init":
+            raise UserInputError("--dry-run nu este suportat pentru 'init'.")
 
-    if dry_run:
-        sys.argv = [arg for arg in sys.argv if arg != "--dry-run"]
+        if dry_run:
+            sys.argv = [arg for arg in sys.argv if arg != "--dry-run"]
 
-    verbose = "--verbose" in sys.argv or "-v" in sys.argv
-    quiet = "--quiet" in sys.argv or "-q" in sys.argv
-    if verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.debug("Verbose mode enabled.")
-    elif quiet:
-        logging.getLogger().setLevel(logging.WARNING)
-    else:
-        logging.getLogger().setLevel(logging.INFO)
-    if verbose or quiet:
-        sys.argv = [arg for arg in sys.argv if arg not in ("--verbose", "-v", "--quiet", "-q")]
+        verbose = "--verbose" in sys.argv or "-v" in sys.argv
+        quiet = "--quiet" in sys.argv or "-q" in sys.argv
+        if verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
+            logger.debug("Verbose mode enabled.")
+        elif quiet:
+            logging.getLogger().setLevel(logging.WARNING)
+        else:
+            logging.getLogger().setLevel(logging.INFO)
+        if verbose or quiet:
+            sys.argv = [arg for arg in sys.argv if arg not in ("--verbose", "-v", "--quiet", "-q")]
 
-    if len(sys.argv) != 1 and sys.argv[1].lower() == "init":
-        if len(sys.argv) == 2 or len(sys.argv) == 3:
-            logger.error("[-] Error: Missing required arguments.")
+        if len(sys.argv) != 1 and sys.argv[1].lower() == "init":
+            if len(sys.argv) == 2 or len(sys.argv) == 3:
+                raise UserInputError("Missing required arguments for init command.")
+            p_name = sys.argv[2]
+            t_group = sys.argv[3]
+            requested_lang = sys.argv[4] if len(sys.argv) >= 5 else "en"
+            cmd_init_project(p_name, t_group, requested_lang)
+            return
+
+        elif len(sys.argv) != 1 and sys.argv[1].lower() in ["help", "--help", "-h"]:
             print_cli_help()
-            sys.exit(1)
-        p_name = sys.argv[2]
-        t_group = sys.argv[3]
-        requested_lang = sys.argv[4] if len(sys.argv) >= 5 else "en"
-        cmd_init_project(p_name, t_group, requested_lang)
-        sys.exit(0)
+            return
 
-    elif len(sys.argv) != 1 and sys.argv[1].lower() in ["help", "--help", "-h"]:
-        print_cli_help()
-        sys.exit(0)
+        logger.info(f"[*] Run Jmix CLI engine generation on the current project: '{PROJECT}'...")
 
-    logger.info(f"[*] Run Jmix CLI engine generation on the current project: '{PROJECT}'...")
+        if not PROJECT:
+            raise ConfigurationError("No valid Jmix project detected in this folder.")
 
-    if not PROJECT:
-        logger.error("[-] No valid Jmix project detected in this folder.")
-        print_cli_help()
-        sys.exit(1)
+        if dry_run:
+            if len(sys.argv) == 1:
+                raise UserInputError("--dry-run needs a command.")
+            dry_run_temp_dir = _copy_project_to_temp()
+            os.chdir(dry_run_temp_dir)
+            _patch_globals_for_dry_run(dry_run_temp_dir)
 
-    if dry_run:
         if len(sys.argv) == 1:
-            logger.error("[-] Error: --dry-run needs a command.")
-            print_cli_help()
-            sys.exit(1)
-        dry_run_temp_dir = _copy_project_to_temp()
-        os.chdir(dry_run_temp_dir)
-        _patch_globals_for_dry_run(dry_run_temp_dir)
+            logger.info("=" * 70)
+            logger.info("JMIX CLI - Command Reference")
+            logger.info("=" * 70)
+            logger.info("Available commands:")
+            logger.info("  python3 jmix-cli.py entity-all   - Generate ALL entities + liquibase")
+            logger.info("  python3 jmix-cli.py entity <Name> - Generate single entity")
+            logger.info("  python3 jmix-cli.py security      - Generate security roles")
+            logger.info("  python3 jmix-cli.py ui-list-all   - Generate ALL list views")
+            logger.info("  python3 jmix-cli.py ui-list <Name> - Generate single list view")
+            logger.info("  python3 jmix-cli.py ui-detail-all - Generate ALL detail views")
+            logger.info("  python3 jmix-cli.py ui-detail <Name> - Generate single detail view")
+            logger.info("  python3 jmix-cli.py build-all     - Full generation (all phases)")
+            logger.info("\nOptions:")
+            logger.info("  --dry-run    Generate in a temporary project directory without modifying the current project")
+            logger.info("=" * 70)
+            return
 
-    if len(sys.argv) == 1:
-        logger.info("=" * 70)
-        logger.info("JMIX CLI - Command Reference")
-        logger.info("=" * 70)
-        logger.info("Available commands:")
-        logger.info("  python3 jmix-cli.py entity-all   - Generate ALL entities + liquibase")
-        logger.info("  python3 jmix-cli.py entity <Name> - Generate single entity")
-        logger.info("  python3 jmix-cli.py security      - Generate security roles")
-        logger.info("  python3 jmix-cli.py ui-list-all   - Generate ALL list views")
-        logger.info("  python3 jmix-cli.py ui-list <Name> - Generate single list view")
-        logger.info("  python3 jmix-cli.py ui-detail-all - Generate ALL detail views")
-        logger.info("  python3 jmix-cli.py ui-detail <Name> - Generate single detail view")
-        logger.info("  python3 jmix-cli.py build-all     - Full generation (all phases)")
-        logger.info("\nOptions:")
-        logger.info("  --dry-run    Generate in a temporary project directory without modifying the current project")
-        logger.info("=" * 70)
-        sys.exit(1)
+        action = sys.argv[1].lower()
 
-    action = sys.argv[1].lower()
+        if action == "security":
+            gen_jmix_resource_roles_from_csv()
+            _finish_dry_run(dry_run_temp_dir, original_dir)
+            return
 
-    if action == "security":
-        gen_jmix_resource_roles_from_csv()
-        _finish_dry_run(dry_run_temp_dir, original_dir)
+        elif action == "entity-all":
+            logger.info("[*] Launching ENTITY-ONLY generation for ALL entities...")
+            ordered_list = get_sorted_entities_by_dependency()
+            logger.info(f"[*] Calculated generation sequence: {ordered_list}")
+            for ent in ordered_list:
+                if ent == "User":
+                    relations_list = get_relations_from_csv("relations.csv", "User")
+                    if relations_list:
+                        gen_liquibase_relations_changelog("User", relations_list)
+                        inject_relations_into_existing_user("User", relations_list)
+                        update_messages_entity(
+                            project_dir=".",
+                            base_package=COMPANY + "." + project_name,
+                            entity_name="User",
+                            traits_list=[],
+                            relations_list=relations_list,
+                        )
+                else:
+                    traits = get_traits_from_csv("traits.csv", ent)
+                    fields_list = get_entities_from_csv("entities.csv", ent)
+                    relations_list = get_relations_from_csv("relations.csv", ent)
+                    if fields_list:
+                        gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
+                        gen_liquibase_changelog_from_csv(ent, fields_list, traits)
+                        if relations_list:
+                            gen_liquibase_relations_changelog(ent, relations_list)
+                        computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
+                        if not computed_traits_list:
+                            computed_traits_list = ["name"]
+                        update_messages_entity(
+                            ".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list
+                        )
+            logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+            for ent in ordered_list:
+                relations_list = get_relations_from_csv("relations.csv", ent)
+                composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
+                if composition_rels:
+                    _inject_composition_into_parent(ent, composition_rels)
+            _finalize_composition_relationships()
+            _finish_dry_run(dry_run_temp_dir, original_dir)
+            return
 
-    elif action == "entity-all":
-        logger.info("[*] Launching ENTITY-ONLY generation for ALL entities...")
-        ordered_list = get_sorted_entities_by_dependency()
-        logger.info(f"[*] Calculated generation sequence: {ordered_list}")
-        for ent in ordered_list:
-            if ent == "User":
-                relations_list = get_relations_from_csv("relations.csv", "User")
-                if relations_list:
-                    gen_liquibase_relations_changelog("User", relations_list)
-                    inject_relations_into_existing_user("User", relations_list)
-                    update_messages_entity(
-                        project_dir=".",
-                        base_package=COMPANY + "." + project_name,
-                        entity_name="User",
-                        traits_list=[],
-                        relations_list=relations_list,
-                    )
-            else:
-                traits = get_traits_from_csv("traits.csv", ent)
+        elif action == "ui-list-all":
+            logger.info("[*] Launching UI-LIST generation for ALL entities...")
+            ordered_list = get_sorted_entities_by_dependency()
+            for ent in ordered_list:
                 fields_list = get_entities_from_csv("entities.csv", ent)
                 relations_list = get_relations_from_csv("relations.csv", ent)
                 if fields_list:
-                    gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
-                    gen_liquibase_changelog_from_csv(ent, fields_list, traits)
-                    if relations_list:
-                        gen_liquibase_relations_changelog(ent, relations_list)
-                    computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
-                    if not computed_traits_list:
-                        computed_traits_list = ["name"]
-                    update_messages_entity(
-                        ".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list
-                    )
-        logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
-        for ent in ordered_list:
-            relations_list = get_relations_from_csv("relations.csv", ent)
-            composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
-            if composition_rels:
-                _inject_composition_into_parent(ent, composition_rels)
-        _finalize_composition_relationships()
-        _finish_dry_run(dry_run_temp_dir, original_dir)
+                    gen_list_view_from_csv(ent, fields_list, relations_list)
+            logger.info("\n✅ UI List views generation completed!")
+            _finish_dry_run(dry_run_temp_dir, original_dir)
+            return
 
-    elif action == "ui-list-all":
-        logger.info("[*] Launching UI-LIST generation for ALL entities...")
-        ordered_list = get_sorted_entities_by_dependency()
-        for ent in ordered_list:
-            fields_list = get_entities_from_csv("entities.csv", ent)
-            relations_list = get_relations_from_csv("relations.csv", ent)
-            if fields_list:
-                gen_list_view_from_csv(ent, fields_list, relations_list)
-        logger.info("\n✅ UI List views generation completed!")
-        _finish_dry_run(dry_run_temp_dir, original_dir)
-
-    elif action == "ui-detail-all":
-        logger.info("[*] Launching UI-DETAIL generation for ALL entities...")
-        ordered_list = get_sorted_entities_by_dependency()
-        for ent in ordered_list:
-            fields_list = get_entities_from_csv("entities.csv", ent)
-            relations_list = get_relations_from_csv("relations.csv", ent)
-            if fields_list:
-                gen_detail_view_from_csv(ent, fields_list, relations_list)
-        logger.info("\n✅ UI Detail views generation completed!")
-        _finish_dry_run(dry_run_temp_dir, original_dir)
-
-    elif action == "build-all":
-        logger.info("\n" + "=" * 70)
-        logger.info("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL INDUSTRIAL SEQUENCE...")
-        logger.info("=" * 70)
-        ordered_list = get_sorted_entities_by_dependency()
-        logger.info(f"[*] Calculated execution flow pipeline: {ordered_list}\n")
-
-        logger.info("[⚡] PHASE 1: Scaffolding Data Models and Database Changelogs...")
-        for ent in ordered_list:
-            if ent == "User":
-                logger.info("👤 System User discovered in pipeline. Triggering surgical relationship infiltration...")
-                relations_list = get_relations_from_csv("relations.csv", "User")
-                if relations_list:
-                    gen_liquibase_relations_changelog("User", relations_list)
-                    inject_relations_into_existing_user("User", relations_list)
-                    update_messages_entity(".", COMPANY + "." + project_name, "User", [], relations_list)
-            else:
-                logger.info(f"   ▶️ Building Domain Model: {ent}")
-                traits = get_traits_from_csv("traits.csv", ent)
+        elif action == "ui-detail-all":
+            logger.info("[*] Launching UI-DETAIL generation for ALL entities...")
+            ordered_list = get_sorted_entities_by_dependency()
+            for ent in ordered_list:
                 fields_list = get_entities_from_csv("entities.csv", ent)
                 relations_list = get_relations_from_csv("relations.csv", ent)
                 if fields_list:
-                    gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
-                    gen_liquibase_changelog_from_csv(ent, fields_list, traits)
+                    gen_detail_view_from_csv(ent, fields_list, relations_list)
+            logger.info("\n✅ UI Detail views generation completed!")
+            _finish_dry_run(dry_run_temp_dir, original_dir)
+            return
+
+        elif action == "build-all":
+            logger.info("\n" + "=" * 70)
+            logger.info("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL INDUSTRIAL SEQUENCE...")
+            logger.info("=" * 70)
+            ordered_list = get_sorted_entities_by_dependency()
+            logger.info(f"[*] Calculated execution flow pipeline: {ordered_list}\n")
+
+            logger.info("[⚡] PHASE 1: Scaffolding Data Models and Database Changelogs...")
+            for ent in ordered_list:
+                if ent == "User":
+                    logger.info("👤 System User discovered in pipeline. Triggering surgical relationship infiltration...")
+                    relations_list = get_relations_from_csv("relations.csv", "User")
                     if relations_list:
-                        gen_liquibase_relations_changelog(ent, relations_list)
-                    computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
-                    if not computed_traits_list:
-                        computed_traits_list = ["name"]
-                    update_messages_entity(".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list)
+                        gen_liquibase_relations_changelog("User", relations_list)
+                        inject_relations_into_existing_user("User", relations_list)
+                        update_messages_entity(".", COMPANY + "." + project_name, "User", [], relations_list)
+                else:
+                    logger.info(f"   ▶️ Building Domain Model: {ent}")
+                    traits = get_traits_from_csv("traits.csv", ent)
+                    fields_list = get_entities_from_csv("entities.csv", ent)
+                    relations_list = get_relations_from_csv("relations.csv", ent)
+                    if fields_list:
+                        gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
+                        gen_liquibase_changelog_from_csv(ent, fields_list, traits)
+                        if relations_list:
+                            gen_liquibase_relations_changelog(ent, relations_list)
+                        computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
+                        if not computed_traits_list:
+                            computed_traits_list = ["name"]
+                        update_messages_entity(".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list)
 
-        logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
-        for ent in ordered_list:
-            relations_list = get_relations_from_csv("relations.csv", ent)
-            composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
-            if composition_rels:
-                _inject_composition_into_parent(ent, composition_rels)
-
-        _finalize_composition_relationships()
-
-        # Inject relationships into existing User entity (Jmix built-in)
-        logger.info("\n[⚡] PHASE 1.7: Injecting relationships into system User entity...")
-        if "User" in ordered_list:
-            user_rels = get_relations_from_csv("relations.csv", "User")
-            if user_rels:
-                inject_relations_into_existing_user("User", user_rels)
-
-        logger.info("\n[⚡] PHASE 2: Architecturing FlowUI Screen Descriptors & Controllers...")
-        for ent in ordered_list:
-            logger.info(f"   📺 Compiling Layout XML and Java Views for: {ent}")
-            if ent == "User":
-                relations_list = get_relations_from_csv("relations.csv", "User")
-                if relations_list:
-                    inject_list_ui_into_existing_user(relations_list)
-                    inject_detail_ui_into_existing_user(relations_list)
-            else:
-                current_fields = get_entities_from_csv("entities.csv", ent)
+            logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+            for ent in ordered_list:
                 relations_list = get_relations_from_csv("relations.csv", ent)
-                if current_fields:
-                    gen_list_view_from_csv(ent, current_fields, relations_list)
-                    gen_detail_view_from_csv(ent, current_fields, relations_list)
-                    _update_menu(ent)
+                composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
+                if composition_rels:
+                    _inject_composition_into_parent(ent, composition_rels)
 
-        all_relations = []
-        for ent in ordered_list:
-            rels = get_relations_from_csv("relations.csv", ent)
-            for rel in rels:
-                rel["source_entity"] = ent
-            all_relations.extend(rels)
-        inject_nn_grid_into_inverse_entity(all_relations)
-        inject_nn_datagrid_into_source_entity(all_relations)
+            _finalize_composition_relationships()
 
-        logger.info("\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter...")
-        gen_jmix_resource_roles_from_csv()
+            # Inject relationships into existing User entity (Jmix built-in)
+            logger.info("\n[⚡] PHASE 1.7: Injecting relationships into system User entity...")
+            if "User" in ordered_list:
+                user_rels = get_relations_from_csv("relations.csv", "User")
+                if user_rels:
+                    inject_relations_into_existing_user("User", user_rels)
 
-        logger.info("\n" + "=" * 70)
-        logger.info("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
-        logger.info("=" * 70 + "\n")
+            logger.info("\n[⚡] PHASE 2: Architecturing FlowUI Screen Descriptors & Controllers...")
+            for ent in ordered_list:
+                logger.info(f"   📺 Compiling Layout XML and Java Views for: {ent}")
+                if ent == "User":
+                    relations_list = get_relations_from_csv("relations.csv", "User")
+                    if relations_list:
+                        inject_list_ui_into_existing_user(relations_list)
+                        inject_detail_ui_into_existing_user(relations_list)
+                else:
+                    current_fields = get_entities_from_csv("entities.csv", ent)
+                    relations_list = get_relations_from_csv("relations.csv", ent)
+                    if current_fields:
+                        gen_list_view_from_csv(ent, current_fields, relations_list)
+                        gen_detail_view_from_csv(ent, current_fields, relations_list)
+                        _update_menu(ent)
+
+            all_relations = []
+            for ent in ordered_list:
+                rels = get_relations_from_csv("relations.csv", ent)
+                for rel in rels:
+                    rel["source_entity"] = ent
+                all_relations.extend(rels)
+            inject_nn_grid_into_inverse_entity(all_relations)
+            inject_nn_datagrid_into_source_entity(all_relations)
+
+            logger.info("\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter...")
+            gen_jmix_resource_roles_from_csv()
+
+            logger.info("\n" + "=" * 70)
+            logger.info("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
+            logger.info("=" * 70 + "\n")
+            _finish_dry_run(dry_run_temp_dir, original_dir)
+            return
+
+        if len(sys.argv) == 2:
+            raise UserInputError("Missing required Entity Name parameter.")
+
+        name = sys.argv[2]
+
+        if action == "entity":
+            _generate_single_entity(name)
+
+        elif action == "ui-list":
+            if name == "User":
+                logger.info("[*] Triggering FlowUI List View infiltration for system User...")
+                relations_list = get_relations_from_csv("relations.csv", "User")
+                inject_list_ui_into_existing_user(relations_list)
+            else:
+                fields_list = get_entities_from_csv("entities.csv", name)
+                relations_list = get_relations_from_csv("relations.csv", name)
+                if not fields_list:
+                    raise UserInputError(f"Fields for entity '{name}' do not exist in entities.csv")
+                gen_list_view_from_csv(name, fields_list, relations_list)
+                _update_menu(name)
+
+        elif action == "ui-detail":
+            if name == "User":
+                logger.info("[*] Triggering FlowUI Detail View infiltration for system User...")
+                relations_list = get_relations_from_csv("relations.csv", "User")
+                inject_detail_ui_into_existing_user(relations_list)
+            else:
+                fields_list = get_entities_from_csv("entities.csv", name)
+                relations_list = get_relations_from_csv("relations.csv", name)
+                if not fields_list:
+                    raise UserInputError(f"Fields for '{name}' do not exist in entities.csv")
+                gen_detail_view_from_csv(name, fields_list, relations_list)
+
+        else:
+            raise UserInputError(f"Unknown action: '{action}'. Use entity, ui-list, ui-detail or security.")
+
         _finish_dry_run(dry_run_temp_dir, original_dir)
-
-    if len(sys.argv) == 2:
-        logger.error("[-] Error: Missing required Entity Name parameter.")
-        logger.info("Usage: python3 jmix-cli.py [entity|ui-list|ui-detail] [Name]")
-        sys.exit(1)
-
-    name = sys.argv[2]
-
-    if action == "entity":
-        _generate_single_entity(name)
-
-    elif action == "ui-list":
-        if name == "User":
-            logger.info("[*] Triggering FlowUI List View infiltration for system User...")
-            relations_list = get_relations_from_csv("relations.csv", "User")
-            inject_list_ui_into_existing_user(relations_list)
-        else:
-            fields_list = get_entities_from_csv("entities.csv", name)
-            relations_list = get_relations_from_csv("relations.csv", name)
-            if not fields_list:
-                logger.info(f" ⚠️ Error: Fields for entity '{name}' do not exist in entities.csv")
-                sys.exit(1)
-            gen_list_view_from_csv(name, fields_list, relations_list)
-            _update_menu(name)
-
-    elif action == "ui-detail":
-        if name == "User":
-            logger.info("[*] Triggering FlowUI Detail View infiltration for system User...")
-            relations_list = get_relations_from_csv("relations.csv", "User")
-            inject_detail_ui_into_existing_user(relations_list)
-        else:
-            fields_list = get_entities_from_csv("entities.csv", name)
-            relations_list = get_relations_from_csv("relations.csv", name)
-            if not fields_list:
-                logger.info(f" ⚠️ Error: Fields for '{name}' do not exist in entities.csv")
-                sys.exit(1)
-            gen_detail_view_from_csv(name, fields_list, relations_list)
-
-    else:
-        logger.info(f" ⚠️ Unknown action: '{action}'. Use entity, ui-list, ui-detail or security.")
-        sys.exit(1)
-
-    _finish_dry_run(dry_run_temp_dir, original_dir)
-
-
-if __name__ == "__main__":
-    main()
+    except JmixCliError as e:
+        _handle_error(e)
+    except Exception as e:
+        _handle_error(e)
