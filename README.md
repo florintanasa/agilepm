@@ -112,7 +112,10 @@ The system consists of 9 custom entities built on top of the standard Jmix `User
 
 - **COMPOSITION (1:N, 1:1)**: Parent-child relationship where child lifecycle is tied to parent. Deleting parent cascades to children.
 - **ASSOCIATION (N:1, 1:1)**: Regular relationship without cascade delete. For 1:1, both sides are defined in `relations.csv` so each entity gets a bidirectional navigation property.
-- **MANY_TO_MANY**: Implemented via junction table. The `ownership` column controls whether one side or both sides manage the junction table and receive an editable dataGrid in the detail view.
+- **MANY_TO_MANY**: Implemented via junction table. The `ownership` column controls how the UI is generated:
+  - `owning` / empty: source entity gets a `multiSelectComboBoxPicker` in the detail view, inverse target gets a read-only `dataGrid`.
+  - `single-owning`: source entity gets a `multiSelectComboBoxPicker`; target entity gets **no relationship UI** at all.
+  - `both-owning`: both sides get a `dataGrid` with add/remove actions, and the `multiSelectComboBoxPicker` is removed.
 
 ## Configuration Files
 
@@ -151,7 +154,7 @@ Defines relationships between entities:
 | `target_entity` | Target entity class name |
 | `field_name` | Field name in source entity |
 | `mandatory` | NOT NULL constraint on FK column |
-| `ownership` | For N:N only: `owning` (source owns junction table), `both-owning` (both sides own), empty/omit for inverse/mappedBy |
+| `ownership` | For N:N only: `owning` (source owns junction table, target is read-only), `single-owning` (source owns junction table, target has no UI), `both-owning` (both sides own), empty/omit for inverse/mappedBy |
 
 > Note: For `1:1`, the relation is defined **twice**: once from the source side with `field_name`, and once from the target side with the inverse `field_name`. This ensures bidirectional navigation on both sides.
 
@@ -254,9 +257,10 @@ Running `build-all` creates:
    - List views extending `StandardListView`
    - Detail views extending `StandardDetailView`
    - DataGrid columns for all fields
-   - N:N detail views depend on `ownership`:
-     - `owning` / empty: source gets `multiSelectComboBoxPicker`, inverse target gets a read-only `dataGrid`
-     - `both-owning`: both sides get `dataGrid` with add/remove actions; the `multiSelectComboBoxPicker` is removed
+    - N:N detail views depend on `ownership`:
+      - `owning` / empty: source gets `multiSelectComboBoxPicker`, inverse target gets a read-only `dataGrid`
+      - `single-owning`: source gets `multiSelectComboBoxPicker`, target gets **no relationship UI**
+      - `both-owning`: both sides get `dataGrid` with add/remove actions; the `multiSelectComboBoxPicker` is removed
 
 4. **Messages** (`messages.properties`, `messages_ro.properties`)
    - Entity labels and field names
