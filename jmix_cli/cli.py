@@ -178,19 +178,19 @@ def _print_dry_run_summary(temp_dir: Path, original_dir: Path) -> None:
     xml_files = list(temp_dir.rglob("*.xml"))
     props_files = list(temp_dir.rglob("*.properties"))
 
-    logger.info("\n" + "=" * 70)
+    logger.info("=" * 70)
     logger.info("[dry-run] Generation completed successfully!")
     logger.info("=" * 70)
     logger.info(f"  Dry-run output directory: {temp_dir}")
     logger.info(f"  Generated Java files:     {len(java_files)}")
     logger.info(f"  Generated XML files:      {len(xml_files)}")
     logger.info(f"  Generated properties:     {len(props_files)}")
-    logger.info(f"\n  To inspect differences:")
-    logger.info(f"    meld {original_dir} {temp_dir}")
-    logger.info(f"\n  To run the application:")
+    logger.info("\n  To inspect differences:")
+    logger.info("    meld {original_dir} {temp_dir}")
+    logger.info("\n  To run the application:")
     logger.info(f"    cd {temp_dir} && ./gradlew bootRun")
-    logger.info(f"    Look for 'Application started at http://localhost:XXXX' in the bootRun log.")
-    logger.info(f"    To use a fixed port, set server.port=<desired_port> in src/main/resources/application.properties.")
+    logger.info("    Look for 'Application started at http://localhost:XXXX' in the bootRun log.")
+    logger.info("    To use a fixed port, set server.port=<desired_port> in src/main/resources/application.properties.")
     logger.info("=" * 70 + "\n")
 
 
@@ -698,7 +698,7 @@ def main() -> None:
             return
 
         elif action == "build-all":
-            logger.info("\n" + "=" * 70)
+            logger.info("=" * 70)
             logger.info("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL INDUSTRIAL SEQUENCE...")
             logger.info("=" * 70)
             ordered_list = get_sorted_entities_by_dependency()
@@ -772,7 +772,7 @@ def main() -> None:
             logger.info("\n[⚡] PHASE 3: Compiling Access Control Security Roles Interface blueprinter...")
             gen_jmix_resource_roles_from_csv()
 
-            logger.info("\n" + "=" * 70)
+            logger.info("=" * 70)
             logger.info("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
             logger.info("=" * 70 + "\n")
             _finish_dry_run(dry_run_temp_dir, original_dir)
