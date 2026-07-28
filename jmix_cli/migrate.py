@@ -440,6 +440,8 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         entity_name: Name of the entity to migrate
         mode: 'prompt' (ask for confirmation on drop), 'force' (apply all), 'dry-run' (no write), 'quiet' (only log on changes)
     """
+    from jmix_cli.i18n import update_messages_entity
+    
     db_adapter = HSQLDBAdapter()
     
     # Inject new fields into existing Java entity first
@@ -447,6 +449,11 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         if mode != "quiet":
             logger.info(f"Injecting {len(missing_fields)} new fields into {entity_name}.java...")
         inject_new_fields_into_existing_entity(entity_name, missing_fields)
+        
+        # Update messages for new fields
+        if mode != "dry-run" and mode != "quiet":
+            new_field_names = [f["name"] for f in missing_fields]
+            update_messages_entity(str(PROIECT_PATH), f"{company_path}.{project_name}", entity_name, new_field_names, [])
     
     # Detect dropped columns
     dropped_columns = detect_dropped_columns(entity_name, db_adapter)
