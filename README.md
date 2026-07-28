@@ -300,6 +300,16 @@ python3 jmix-cli.py --dry-run entity-all
 python3 jmix-cli.py --dry-run entity Project
 ```
 
+Compatible with all generation commands except `init`:
+- `--dry-run build-all`
+- `--dry-run entity-all`
+- `--dry-run entity <Name>`
+- `--dry-run ui-detail-all`
+- `--dry-run ui-detail <Name>`
+- `--dry-run ui-list-all`
+- `--dry-run ui-list <Name>`
+- `--dry-run security`
+
 Benefits:
 - Copies the current project into a temp directory and runs generation there
 - Sets `server.port=0` so the temporary app won't conflict with a running instance
