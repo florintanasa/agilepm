@@ -252,26 +252,60 @@ Running `build-all` creates:
    - Base changelog: `<timestamp>-01_base-<entity>.xml`
    - Relations changelog: `<timestamp>-02-relations_<entity>.xml`
    - FK constraints automatically added for COMPOSITION relationships
+   - Audit changelog: automatically includes `/io/jmix/audit/liquibase/changelog.xml` if `traits.csv` enables `audit_of_creation` or `audit_of_modification`
 
 3. **Views** (`src/main/java/.../view/`)
-   - List views extending `StandardListView`
-   - Detail views extending `StandardDetailView`
-   - DataGrid columns for all fields
+    - List views extending `StandardListView`
+    - Detail views extending `StandardDetailView`
+    - DataGrid columns for all fields
     - N:N detail views depend on `ownership`:
       - `owning` / empty: source gets `multiSelectComboBoxPicker`, inverse target gets a read-only `dataGrid`
       - `single-owning`: source gets `multiSelectComboBoxPicker`, target gets **no relationship UI**
       - `both-owning`: both sides get `dataGrid` with add/remove actions; the `multiSelectComboBoxPicker` is removed
 
 4. **Messages** (`messages.properties`, `messages_ro.properties`)
-   - Entity labels and field names
-   - View titles and menu entries
-   - For translate is used local `ollama` with model `translategemma:4b`, if was installed
+    - Entity labels and field names
+    - View titles and menu entries
+    - For translate is used local `ollama` with model `translategemma:4b`, if was installed
 
 5. **Security Roles** (`src/main/java/.../security/`)
-   - `@ResourceRole` annotated classes
-   - Entity policies (CRUD)
-   - View policies (list/detail)
-   - Menu policies for navigation
+    - `@ResourceRole` annotated classes
+    - Entity policies (CRUD)
+    - View policies (list/detail)
+    - Menu policies for navigation
+
+6. **Gradle dependencies** (`build.gradle`)
+    - Automatically injects `io.jmix.audit:jmix-audit-starter` and `io.jmix.audit:jmix-audit-flowui-starter` when `traits.csv` enables audit for any entity
+    - Marked with `// Automatically configured via Jmix CLI`
+    - Liquibase master changelog gets `<include file="/io/jmix/audit/liquibase/changelog.xml"/>` automatically if missing
+
+### Audit Addon
+
+When `traits.csv` enables `audit_of_creation=true` or `audit_of_modification=true` for any entity, Jmix CLI automatically configures the addon so entity methods like `@CreatedBy`, `@CreatedDate`, `@LastModifiedBy`, and `@LastModifiedDate` work without manual setup:
+
+- Adds to `build.gradle`:
+  - `implementation 'io.jmix.audit:jmix-audit-starter'`
+  - `implementation 'io.jmix.audit:jmix-audit-flowui-starter'`
+- Adds to `src/main/resources/.../liquibase/changelog.xml`:
+  - `<include file="/io/jmix/audit/liquibase/changelog.xml"/>`
+
+This creates the underlying `AUDIT_LOGGED_ENTITY` schema automatically via Liquibase and enables the Audit UI screens.
+
+### Dry-Run Mode
+
+```bash
+# Test generation in a temp project without touching the current one
+python3 jmix-cli.py --dry-run build-all
+python3 jmix-cli.py --dry-run entity-all
+python3 jmix-cli.py --dry-run entity Project
+```
+
+Benefits:
+- Copies the current project into a temp directory and runs generation there
+- Sets `server.port=0` so the temporary app won't conflict with a running instance
+- Prints a summary with generated file counts and a suggested `meld` diff command
+- Great for validating CSV changes before applying them to the real project
+- Does not support `init`, because initialization is already a clean/new-project operation
 
 ## Security Roles
 
