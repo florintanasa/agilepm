@@ -220,6 +220,68 @@ def _handle_error(error: Exception) -> None:
     sys.exit(1)
 
 
+def _update_master_changelog() -> None:
+    changelog_dir = Path("src/main/resources") / company_path / project_name / "liquibase" / "changelog"
+    master = changelog_dir.parent / "changelog.xml"
+    if not master.exists():
+        return
+
+    all_xml = list(changelog_dir.rglob("*.xml"))
+    all_xml = [p for p in all_xml if p.name != "changelog.xml"]
+    if not all_xml:
+        return
+
+    sorted_entities = []
+    try:
+        sorted_entities = get_sorted_entities_by_dependency()
+    except Exception:
+        sorted_entities = []
+
+    entity_order = {name: idx for idx, name in enumerate(sorted_entities)}
+
+    def sort_key(path: Path):
+        stem = path.stem
+        suffix = ""
+        if stem.endswith("-base"):
+            suffix = "A"
+            entity_part = stem[:-5]
+        elif stem.endswith("-fk"):
+            suffix = "B"
+            entity_part = stem[:-3]
+        elif stem.endswith("-relations"):
+            suffix = "C"
+            entity_part = stem[:-9]
+        else:
+            suffix = "D"
+            entity_part = stem
+        entity_idx = entity_order.get(entity_part, len(entity_order))
+        return (entity_idx, suffix, path.name)
+
+    ordered = sorted(all_xml, key=sort_key)
+    seen = set()
+    unique_ordered = []
+    for p in ordered:
+        if p not in seen:
+            seen.add(p)
+            unique_ordered.append(p)
+    includes = "\n".join(
+        f'    <include file="/{p.relative_to(changelog_dir).as_posix()}"/>'
+        for p in unique_ordered
+    )
+
+    content = master.read_text(encoding="utf-8")
+    marker = "<!-- GENERATED_CHANGELOG_INCLUDES -->"
+    if marker in content:
+        new_content = content.replace(marker, includes)
+    else:
+        new_content = content.replace(
+            "</databaseChangeLog>",
+            f"{marker}\n{includes}\n</databaseChangeLog>",
+        )
+    master.write_text(new_content, encoding="utf-8")
+    logger.info("[+] Updated master changelog.xml with dependency-ordered includes")
+
+
 def _generate_single_entity(name: str) -> None:
     inject_audit_dependencies()
     if name == "User":
@@ -717,6 +779,7 @@ def main() -> None:
                 if composition_rels:
                     _inject_composition_into_parent(ent, composition_rels)
             _finalize_composition_relationships()
+            _update_master_changelog()
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
 
@@ -823,6 +886,7 @@ def main() -> None:
             logger.info("=" * 70)
             logger.info("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
             logger.info("=" * 70 + "\n")
+            _update_master_changelog()
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
 

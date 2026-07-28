@@ -252,7 +252,7 @@ Running `build-all` creates:
    - Base changelog: `YYYYMMDD-HHMMSS-<entity>-base.xml`
    - Relations changelog: `YYYYMMDD-HHMMSS-<entity>-relations.xml`
    - FK constraint changelog: `YYYYMMDD-HHMMSS-<entity>-fk.xml`
-   - Files are executed by Liquibase in alphabetical order: `base` → `fk` → `relations`
+   - The master `changelog.xml` is updated with explicit `<include>` statements in dependency order after generation, ensuring entities are created before their foreign keys and relation tables
    - Audit changelog: automatically includes `/io/jmix/audit/liquibase/changelog.xml` if `traits.csv` enables `audit_of_creation` or `audit_of_modification`
 
 3. **Views** (`src/main/java/.../view/`)
