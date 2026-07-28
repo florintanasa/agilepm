@@ -382,40 +382,46 @@ def _update_menu(n: str) -> None:
 
 def inject_audit_dependencies() -> None:
     build_gradle_path = Path("build.gradle")
-    if not build_gradle_path.exists():
-        return
-    traits_path = Path("traits.csv")
-    if not traits_path.exists():
-        return
+    if build_gradle_path.exists():
+        traits_path = Path("traits.csv")
+        if traits_path.exists():
+            audit_needed = False
+            with traits_path.open(encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if (
+                        row.get("audit_of_creation", "").strip().lower() == "true"
+                        or row.get("audit_of_modification", "").strip().lower() == "true"
+                    ):
+                        audit_needed = True
+                        break
 
-    audit_needed = False
-    with traits_path.open(encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if (
-                row.get("audit_of_creation", "").strip().lower() == "true"
-                or row.get("audit_of_modification", "").strip().lower() == "true"
-            ):
-                audit_needed = True
-                break
+            if audit_needed:
+                content = build_gradle_path.read_text(encoding="utf-8")
+                has_starter = "jmix-audit-starter" in content
+                has_flowui = "jmix-audit-flowui-starter" in content
+                if not has_starter or not has_flowui:
+                    lines_to_add = []
+                    if not has_starter:
+                        lines_to_add.append("    implementation 'io.jmix.audit:jmix-audit-starter' // Automatically configured via Jmix CLI")
+                    if not has_flowui:
+                        lines_to_add.append("    implementation 'io.jmix.audit:jmix-audit-flowui-starter' // Automatically configured via Jmix CLI")
+                    if lines_to_add and "dependencies {" in content:
+                        insertion = "\n".join([""] + lines_to_add) + "\n"
+                        content = content.replace("dependencies {", f"dependencies {{{insertion}", 1)
+                        build_gradle_path.write_text(content, encoding="utf-8")
+                        logger.info("[+] Injected Jmix Audit dependencies into build.gradle")
 
-    if not audit_needed:
-        return
-
-    content = build_gradle_path.read_text(encoding="utf-8")
-    if "jmix-audit-starter" in content and "jmix-audit-flowui-starter" in content:
-        return
-
-    lines_to_add = [
-        "",
-        "    implementation 'io.jmix.audit:jmix-audit-starter' // Automatically configured via Jmix CLI",
-        "    implementation 'io.jmix.audit:jmix-audit-flowui-starter' // Automatically configured via Jmix CLI",
-    ]
-    if "dependencies {" in content:
-        insertion = "\n".join(lines_to_add) + "\n"
-        content = content.replace("dependencies {", f"dependencies {{{insertion}", 1)
-        build_gradle_path.write_text(content, encoding="utf-8")
-        logger.info("[+] Injected Jmix Audit dependencies into build.gradle")
+    changelog_path = Path("src/main/resources") / company_path / project_name / "liquibase" / "changelog.xml"
+    if changelog_path.exists():
+        changelog_content = changelog_path.read_text(encoding="utf-8")
+        if "/io/jmix/audit/liquibase/changelog.xml" not in changelog_content:
+            insert_marker = f'    <includeAll path="/{company_path}/{project_name}/liquibase/changelog"/>'
+            if insert_marker in changelog_content:
+                audit_include = '    <include file="/io/jmix/audit/liquibase/changelog.xml"/>\n'
+                changelog_content = changelog_content.replace(insert_marker, f"{audit_include}{insert_marker}")
+                changelog_path.write_text(changelog_content, encoding="utf-8")
+                logger.info("[+] Injected Jmix Audit changelog into liquibase/changelog.xml")
 
 
 def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en") -> None:
