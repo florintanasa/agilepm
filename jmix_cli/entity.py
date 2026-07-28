@@ -470,6 +470,22 @@ def get_sorted_entities_by_dependency() -> list[str]:
     return sorted_entities
 
 
+def has_existing_entity_and_changelog(name: str) -> bool:
+    """Check if entity Java file and changelog already exist."""
+    entity_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{name}.java"
+    changelog_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog"
+    
+    if not entity_path.exists():
+        return False
+    
+    # Check if there's at least one changelog for this table
+    if changelog_dir.exists():
+        pattern = f"*{name.lower()}*.xml"
+        for f in changelog_dir.rglob(pattern):
+            return True
+    return False
+
+
 def gen_entity_mechanic_from_csv(
     name: str, fields_list: list[dict[str, Any]], traits: dict[str, Any], relations_list: list[dict[str, Any]] = []
 ) -> None:

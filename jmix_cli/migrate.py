@@ -403,10 +403,14 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
         if field["mandatory"]:
             validation_anno = "    @NotNull\n"
         
-        field_block = f"{validation_anno}    @Column(name = \"{f_name.upper()}\")"
+        # Build field with correct syntax
         if field["mandatory"]:
-            field_block += ", nullable = false"
-        field_block += f")\n    private {f_type} {f_name};\n\n"
+            column_annotation = f'    @Column(name = "{f_name.upper()}", nullable = false)\n'
+        else:
+            column_annotation = f'    @Column(name = "{f_name.upper()}")\n'
+        field_declaration = f"    private {f_type} {f_name};\n\n"
+        
+        field_block = f"{validation_anno}{column_annotation}{field_declaration}"
         
         # Find insertion point (before getId())
         if "    public UUID getId()" in content:
