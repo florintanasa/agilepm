@@ -60,6 +60,7 @@ from jmix_cli.views import (
 from jmix_cli.security import gen_jmix_resource_roles_from_csv
 from jmix_cli.i18n import update_messages_entity
 from jmix_cli.user import inject_relations_into_existing_user
+from jmix_cli.migrate import migrate_entity, migrate_all_entities
 
 logger = get_logger("jmix_cli.cli")
 
@@ -258,8 +259,23 @@ def _generate_single_entity(name: str) -> None:
         relations_list = get_relations_from_csv("relations.csv", name)
         if not fields_list:
             raise UserInputError(f"No fields found for the entity '{name}' in entities.csv")
-        logger.info(f"Generating Entity {name} from CSV architecture...")
-        gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
+        
+        # Check if entity already exists
+        from jmix_cli.entity import has_existing_entity_and_changelog
+        entity_exists = has_existing_entity_and_changelog(name)
+        
+        if entity_exists:
+            # Entity exists - just update Java file and run migrate for new fields
+            logger.info(f"Entity {name} exists. Updating Java class and checking for incremental migrations...")
+            gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
+            # Run migrate to add new columns only
+            from jmix_cli.migrate import migrate_entity
+            migrate_entity(name, mode="quiet")  # quiet = no prompts, just check
+        else:
+            # New entity - generate everything
+            logger.info(f"Generating Entity {name} from CSV architecture...")
+            gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
+        
         computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == name.strip()]
         if not computed_traits_list:
             computed_traits_list = ["name"]
@@ -270,9 +286,14 @@ def _generate_single_entity(name: str) -> None:
             traits_list=computed_traits_list,
             relations_list=relations_list,
         )
-        gen_liquibase_changelog_from_csv(name, fields_list, traits)
+        # Only generate changelog if entity is new
+        if not entity_exists:
+            gen_liquibase_changelog_from_csv(name, fields_list, traits)
         if relations_list:
-            gen_liquibase_relations_changelog(name, relations_list)
+            # Check if relations changelog exists
+            from jmix_cli.migrate import get_existing_columns_from_changelogs
+            # For relations, we need to check if FK columns exist
+            migrate_entity(name, mode="quiet")  # handles relations too
 
 
 def _finalize_composition_relationships() -> None:
@@ -674,6 +695,8 @@ def main() -> None:
             logger.info("Available commands:")
             logger.info("  python3 jmix-cli.py entity-all   - Generate ALL entities + liquibase")
             logger.info("  python3 jmix-cli.py entity <Name> - Generate single entity")
+            logger.info("  python3 jmix-cli.py migrate <Name> - Generate incremental DB migration for entity")
+            logger.info("  python3 jmix-cli.py migrate-all - Generate incremental DB migrations for all entities")
             logger.info("  python3 jmix-cli.py security      - Generate security roles")
             logger.info("  python3 jmix-cli.py ui-list-all   - Generate ALL list views")
             logger.info("  python3 jmix-cli.py ui-list <Name> - Generate single list view")
@@ -846,7 +869,14 @@ def main() -> None:
 
         name = sys.argv[2]
 
-        if action == "entity":
+        if action == "migrate":
+            migrate_entity(name)
+
+        elif action == "migrate-all":
+            logger.info("[*] Running incremental DB migrations for all entities...")
+            migrate_all_entities()
+
+        elif action == "entity":
             _generate_single_entity(name)
 
         elif action == "ui-list":
