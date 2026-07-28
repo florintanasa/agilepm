@@ -138,7 +138,7 @@ def gen_liquibase_changelog_from_csv(
         + f"/src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
     )
     ensure_dir(target_dir)
-    filename = f"{target_dir}/{timestamp}-{name.lower()}-base.xml"
+    filename = f"{target_dir}/{timestamp}-01-base-{name.lower()}.xml"
     write_file(filename, xml_content)
     logger.info(f" -> Generated Liquibase XML with Constraints & Indexes: {filename}")
 
@@ -259,6 +259,6 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
         + f"/src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
     )
     ensure_dir(target_dir)
-    filename = f"{target_dir}/{timestamp}-{name.lower()}-relations.xml"
+    filename = f"{target_dir}/{timestamp}-02-relations-{name.lower()}.xml"
     write_file(filename, xml_content)
     logger.info(f" -> Generated Liquibase Relations XML: {filename}")
