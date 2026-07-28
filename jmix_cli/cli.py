@@ -99,7 +99,7 @@ def _copy_project_to_temp() -> Path:
     temp_dir = Path(tempfile.mkdtemp(prefix="jmix-dry-run-"))
     logger.info(f"[dry-run] Creating temporary project at: {temp_dir}")
 
-    dirs_to_copy = ["src", "gradle"]
+    dirs_to_copy = ["gradle"]
     files_to_copy = [
         "build.gradle",
         "settings.gradle",
@@ -121,6 +121,22 @@ def _copy_project_to_temp() -> Path:
         s = src / f
         if s.exists():
             shutil.copy2(s, temp_dir / f)
+
+    src_dir = src / "src"
+    temp_src = temp_dir / "src"
+    if src_dir.exists():
+        shutil.copytree(src_dir, temp_src)
+
+        resources = temp_src / "main" / "resources"
+        if resources.exists():
+            for changelog_dir in resources.rglob("*/liquibase/changelog"):
+                if not changelog_dir.is_dir():
+                    continue
+                for path in list(changelog_dir.iterdir()):
+                    if path.is_file() and path.name != "010-init-user.xml":
+                        path.unlink()
+                    elif path.is_dir():
+                        shutil.rmtree(path, ignore_errors=True)
 
     props = temp_dir / "src" / "main" / "resources" / "application.properties"
     _ensure_dry_run_server_port(props)
