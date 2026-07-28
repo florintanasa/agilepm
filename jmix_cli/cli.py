@@ -221,6 +221,7 @@ def _handle_error(error: Exception) -> None:
 
 
 def _generate_single_entity(name: str) -> None:
+    inject_audit_dependencies()
     if name == "User":
         logger.info("👤 [System User] Triggering relational infiltration...")
         relations_list = get_relations_from_csv("relations.csv", "User")
@@ -377,6 +378,44 @@ def _update_menu(n: str) -> None:
         logger.info("Menu injected successfully into menu.xml!")
     else:
         logger.warning("⚠️ Invalid structure for menu.xml (missing closing </menu> tag)!")
+
+
+def inject_audit_dependencies() -> None:
+    build_gradle_path = Path("build.gradle")
+    if not build_gradle_path.exists():
+        return
+    traits_path = Path("traits.csv")
+    if not traits_path.exists():
+        return
+
+    audit_needed = False
+    with traits_path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if (
+                row.get("audit_of_creation", "").strip().lower() == "true"
+                or row.get("audit_of_modification", "").strip().lower() == "true"
+            ):
+                audit_needed = True
+                break
+
+    if not audit_needed:
+        return
+
+    content = build_gradle_path.read_text(encoding="utf-8")
+    if "jmix-audit-starter" in content and "jmix-audit-flowui-starter" in content:
+        return
+
+    lines_to_add = [
+        "",
+        "    implementation 'io.jmix.audit:jmix-audit-starter'",
+        "    implementation 'io.jmix.audit:jmix-audit-flowui-starter'",
+    ]
+    if "dependencies {" in content:
+        insertion = "\n".join(lines_to_add) + "\n"
+        content = content.replace("dependencies {", f"dependencies {{{insertion}", 1)
+        build_gradle_path.write_text(content, encoding="utf-8")
+        logger.info("[+] Injected Jmix Audit dependencies into build.gradle")
 
 
 def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en") -> None:
@@ -632,6 +671,7 @@ def main() -> None:
             return
 
         elif action == "entity-all":
+            inject_audit_dependencies()
             logger.info("[*] Launching ENTITY-ONLY generation for ALL entities...")
             ordered_list = get_sorted_entities_by_dependency()
             logger.info(f"[*] Calculated generation sequence: {ordered_list}")
@@ -698,6 +738,7 @@ def main() -> None:
             return
 
         elif action == "build-all":
+            inject_audit_dependencies()
             logger.info("=" * 70)
             logger.info("[⚡] TRIGGERING FULL ARCHITECTURE BUILD-ALL INDUSTRIAL SEQUENCE...")
             logger.info("=" * 70)
