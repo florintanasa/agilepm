@@ -453,7 +453,7 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         # Update messages for new fields
         if mode != "dry-run" and mode != "quiet":
             new_field_names = [f["name"] for f in missing_fields]
-            update_messages_entity(str(PROIECT_PATH), f"{company_path}.{project_name}", entity_name, new_field_names, [])
+            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
     
     # Detect dropped columns
     dropped_columns = detect_dropped_columns(entity_name, db_adapter)
