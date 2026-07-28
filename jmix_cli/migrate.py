@@ -379,6 +379,56 @@ def gen_drop_column_changelog(entity_name: str, columns: list[str]) -> str:
     return content
 
 
+def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[dict[str, Any]]) -> None:
+    """Inject new fields into existing Java entity file."""
+    entity_path = (
+        PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
+    )
+    
+    if not entity_path.exists():
+        return
+    
+    content = entity_path.read_text(encoding="utf-8")
+    
+    for field in new_fields:
+        f_name = field["name"]
+        f_type = field["type"]
+        
+        # Check if field already exists
+        if f"private {f_type} {f_name};" in content:
+            continue
+        
+        # Add field
+        validation_anno = ""
+        if field["mandatory"]:
+            validation_anno = "    @NotNull\n"
+        
+        field_block = f"{validation_anno}    @Column(name = \"{f_name.upper()}\")"
+        if field["mandatory"]:
+            field_block += ", nullable = false"
+        field_block += f")\n    private {f_type} {f_name};\n\n"
+        
+        # Find insertion point (before getId())
+        if "    public UUID getId()" in content:
+            content = content.replace(
+                "    public UUID getId()",
+                f"{field_block}    public UUID getId()"
+            )
+        
+        # Add getter/setter
+        f_caps = f_name[0].upper() + f_name[1:]
+        getter = f"    public {f_type} get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
+        setter = f"    public void set{f_caps}({f_type} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+        
+        # Insert before closing brace
+        last_brace = content.rfind("}")
+        if last_brace != -1:
+            content = content[:last_brace] + getter + setter + content[last_brace:]
+    
+    entity_path.write_text(content, encoding="utf-8")
+    logger.info(f"✅ Injected new fields into {entity_name}.java")
+
+
 def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     """Generate incremental Liquibase migrations for an entity.
     
@@ -388,8 +438,13 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     """
     db_adapter = HSQLDBAdapter()
     
-    # Detect changes
-    missing_fields = detect_missing_columns(entity_name, db_adapter)
+    # Inject new fields into existing Java entity first
+    if missing_fields := detect_missing_columns(entity_name, db_adapter):
+        if mode != "quiet":
+            logger.info(f"Injecting {len(missing_fields)} new fields into {entity_name}.java...")
+        inject_new_fields_into_existing_entity(entity_name, missing_fields)
+    
+    # Detect dropped columns
     dropped_columns = detect_dropped_columns(entity_name, db_adapter)
     
     table_name = entity_name.upper()
