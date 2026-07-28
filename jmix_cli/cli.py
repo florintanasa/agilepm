@@ -408,8 +408,8 @@ def inject_audit_dependencies() -> None:
 
     lines_to_add = [
         "",
-        "    implementation 'io.jmix.audit:jmix-audit-starter'",
-        "    implementation 'io.jmix.audit:jmix-audit-flowui-starter'",
+        "    implementation 'io.jmix.audit:jmix-audit-starter' // Automatically configured via Jmix CLI",
+        "    implementation 'io.jmix.audit:jmix-audit-flowui-starter' // Automatically configured via Jmix CLI",
     ]
     if "dependencies {" in content:
         insertion = "\n".join(lines_to_add) + "\n"
