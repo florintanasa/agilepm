@@ -249,9 +249,10 @@ Running `build-all` creates:
    - Soft delete fields (`deletedBy`, `deletedDate`) if soft_delete=true
 
 2. **Liquibase changelogs** (`src/main/resources/.../liquibase/changelog/YYYY/MM/`)
-   - Base changelog: `<timestamp>-01_base-<entity>.xml`
-   - Relations changelog: `<timestamp>-02-relations_<entity>.xml`
-   - FK constraints automatically added for COMPOSITION relationships
+   - Base changelog: `YYYYMMDD-HHMMSS-<entity>-base.xml`
+   - Relations changelog: `YYYYMMDD-HHMMSS-<entity>-relations.xml`
+   - FK constraint changelog: `YYYYMMDD-HHMMSS-<entity>-fk.xml`
+   - Files are executed by Liquibase in alphabetical order: `base` → `fk` → `relations`
    - Audit changelog: automatically includes `/io/jmix/audit/liquibase/changelog.xml` if `traits.csv` enables `audit_of_creation` or `audit_of_modification`
 
 3. **Views** (`src/main/java/.../view/`)

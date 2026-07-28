@@ -132,12 +132,13 @@ def gen_liquibase_changelog_from_csv(
 
     current_year = datetime.now().strftime("%Y")
     current_month = datetime.now().strftime("%m")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     target_dir = (
         str(PROIECT_PATH)
         + f"/src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
     )
     ensure_dir(target_dir)
-    filename = f"{target_dir}/01-base-{name.lower()}.xml"
+    filename = f"{target_dir}/{timestamp}-{name.lower()}-base.xml"
     write_file(filename, xml_content)
     logger.info(f" -> Generated Liquibase XML with Constraints & Indexes: {filename}")
 
@@ -252,11 +253,12 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
 
     current_year = datetime.now().strftime("%Y")
     current_month = datetime.now().strftime("%m")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     target_dir = (
         str(PROIECT_PATH)
         + f"/src/main/resources/{company_path}/{project_name}/liquibase/changelog/{current_year}/{current_month}"
     )
     ensure_dir(target_dir)
-    filename = f"{target_dir}/02-relations-{name.lower()}.xml"
+    filename = f"{target_dir}/{timestamp}-{name.lower()}-relations.xml"
     write_file(filename, xml_content)
     logger.info(f" -> Generated Liquibase Relations XML: {filename}")

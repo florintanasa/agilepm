@@ -351,9 +351,10 @@ def _finalize_composition_relationships() -> None:
 """
             current_year = datetime.now().strftime("%Y")
             current_month = datetime.now().strftime("%m")
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             fk_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog" / current_year / current_month
             fk_dir.mkdir(parents=True, exist_ok=True)
-            fk_file = fk_dir / f"03-fk-{src_class.lower()}.xml"
+            fk_file = fk_dir / f"{timestamp}-{src_class.lower()}-fk.xml"
             fk_file.write_text(fk_changelog, encoding="utf-8")
             logger.info(f" 🔗 Added FK constraint changelog: {fk_file}")
     logger.info("\n✅ Entity generation completed!")
