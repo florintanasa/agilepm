@@ -372,6 +372,17 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]], fiel
         return
     xml_content = xml_path.read_text(encoding="utf-8")
     modified = False
+    # Standard User fields that should never be removed
+    user_standard_fields = {"username", "firstName", "lastName", "email", "active", "timeZoneId"}
+    # Build set of valid field names from entities.csv
+    valid_fields = {f["name"] for f in fields_list} if fields_list else set()
+    # Remove columns that are not in entities.csv and not standard User fields
+    import re
+    for match in re.finditer(r'<column property="([^"]+)"/>', xml_content):
+        col_name = match.group(1)
+        if col_name not in valid_fields and col_name not in user_standard_fields:
+            xml_content = xml_content.replace(f'<column property="{col_name}"/>\n', '')
+            modified = True
     # Inject new fields from entities.csv as columns
     if fields_list:
         for field in fields_list:
@@ -435,6 +446,18 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]], fi
     accumulated_containers = ""
     accumulated_form_components = ""
     modified = False
+    # Standard User fields that should never be removed
+    user_standard_fields = {"username", "firstName", "lastName", "email", "active", "timeZoneId"}
+    # Build set of valid field names from entities.csv
+    valid_fields = {f["name"] for f in fields_list} if fields_list else set()
+    # Remove form components that are not in entities.csv and not standard User fields
+    import re
+    for match in re.finditer(r'<textField id="([^"]+)Field" property="([^"]+)"/>', xml_content):
+        component_id = match.group(1)
+        prop_name = match.group(2)
+        if prop_name not in valid_fields and prop_name not in user_standard_fields:
+            xml_content = xml_content.replace(f'<textField id="{component_id}Field" property="{prop_name}"/>\n', '')
+            modified = True
     # Inject new fields from entities.csv as form components
     if fields_list:
         for field in fields_list:
