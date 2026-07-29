@@ -1202,10 +1202,20 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     
     # Handle dropped columns (case-insensitive dedup between DB and Java sources)
     # Exclude renamed fields — they are handled by the rename changelog
+    # Exclude standard User fields that should never be dropped
+    user_standard_cols = set()
+    if entity_name == "User":
+        user_standard_cols = {
+            "USERNAME", "PASSWORD", "FIRST_NAME", "LAST_NAME",
+            "EMAIL", "ACTIVE", "TIME_ZONE_ID",
+            "FIRSTNAME", "LASTNAME", "TIMEZONEID", "USERPROFILE",
+        }
     dropped_upper = {name.upper() for name in dropped_columns}
     all_dropped = list(dropped_columns) + [
         name for name in dropped_from_csv
-        if name.upper() not in dropped_upper and name not in renamed_old_names
+        if name.upper() not in dropped_upper
+        and name.upper() not in user_standard_cols
+        and name not in renamed_old_names
     ]
     if all_dropped:
         if mode == "prompt":
@@ -1254,8 +1264,7 @@ def migrate_all_entities(mode: str = "prompt") -> None:
     logger.info(f"[*] Running incremental migration for {len(entities)} entities...")
     
     for entity in entities:
-        if entity != "User":  # Skip built-in User for now
-            logger.info(f"\n   → Migrating: {entity}")
-            migrate_entity(entity, mode)
+        logger.info(f"\n   → Migrating: {entity}")
+        migrate_entity(entity, mode)
     
     logger.info("\n✅ Incremental migration completed!")
