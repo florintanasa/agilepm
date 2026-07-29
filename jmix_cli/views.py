@@ -356,7 +356,7 @@ def _inject_composition_ui_into_parent(
         write_file(tgt_xml_path, xml_tgt_content)
 
 
-def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> None:
+def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]], fields_list: list[dict[str, Any]] | None = None) -> None:
     xml_path = (
         PROIECT_PATH
         / "src"
@@ -372,6 +372,16 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> N
         return
     xml_content = xml_path.read_text(encoding="utf-8")
     modified = False
+    # Inject new fields from entities.csv as columns
+    if fields_list:
+        for field in fields_list:
+            f_name = field["name"]
+            if f'name="{f_name}"' not in xml_content and "</columns>" in xml_content:
+                ui_column = f'    <column property="{f_name}"/>\n'
+                xml_content = xml_content.replace(
+                    "</columns>", f"{ui_column}            </columns>"
+                )
+                modified = True
     for rel in relations_list:
         rel_type = rel["type"].strip().upper()
         if rel_type not in {"N:1", "1:1", "N:N"}:
@@ -407,7 +417,7 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> N
         logger.info("✨ [UI-List] user-list-view.xml successfully updated dynamically!")
 
 
-def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) -> None:
+def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]], fields_list: list[dict[str, Any]] | None = None) -> None:
     xml_path = (
         PROIECT_PATH
         / "src"
@@ -425,6 +435,18 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]]) ->
     accumulated_containers = ""
     accumulated_form_components = ""
     modified = False
+    # Inject new fields from entities.csv as form components
+    if fields_list:
+        for field in fields_list:
+            f_name = field["name"]
+            component_id = f"{f_name}Field"
+            if (
+                f'id="{component_id}"' not in xml_content
+                and f'id="{component_id}"' not in accumulated_form_components
+            ):
+                ui_block = f'            <textField id="{component_id}" property="{f_name}"/>\n'
+                accumulated_form_components += ui_block
+                modified = True
     for rel in relations_list:
         rel_type = rel["type"].strip().upper()
         if rel_type not in {"N:1", "1:1", "N:N"}:

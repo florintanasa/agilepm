@@ -764,7 +764,10 @@ def main() -> None:
             for ent in ordered_list:
                 fields_list = get_entities_from_csv("entities.csv", ent)
                 relations_list = get_relations_from_csv("relations.csv", ent)
-                if fields_list:
+                if ent == "User":
+                    if fields_list or relations_list:
+                        inject_list_ui_into_existing_user(relations_list, fields_list)
+                elif fields_list:
                     gen_list_view_from_csv(ent, fields_list, relations_list)
             logger.info("\n✅ UI List views generation completed!")
             _finish_dry_run(dry_run_temp_dir, original_dir)
@@ -776,7 +779,10 @@ def main() -> None:
             for ent in ordered_list:
                 fields_list = get_entities_from_csv("entities.csv", ent)
                 relations_list = get_relations_from_csv("relations.csv", ent)
-                if fields_list:
+                if ent == "User":
+                    if fields_list or relations_list:
+                        inject_detail_ui_into_existing_user(relations_list, fields_list)
+                elif fields_list:
                     gen_detail_view_from_csv(ent, fields_list, relations_list)
             logger.info("\n✅ UI Detail views generation completed!")
             _finish_dry_run(dry_run_temp_dir, original_dir)
