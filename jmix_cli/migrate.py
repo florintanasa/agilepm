@@ -852,11 +852,11 @@ def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> N
     lines = content.splitlines()
 
     for field_name in fields_to_remove:
-        # Find the field type from the Java entity
+        # Find the field type from the Java entity (case-insensitive match)
         field_type = None
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("private ") and f" {field_name};" in stripped:
+            if stripped.startswith("private ") and f" {field_name};" in stripped.lower():
                 parts = stripped.replace(";", "").split()
                 if len(parts) >= 3:
                     field_type = parts[1]
@@ -865,13 +865,26 @@ def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> N
         if field_type is None:
             continue
 
-        caps = field_name[0].upper() + field_name[1:]
+        # Find the actual field name as it appears in Java (camelCase)
+        actual_field_name = None
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("private ") and f" {field_name};" in stripped.lower():
+                parts = stripped.replace(";", "").split()
+                if len(parts) >= 3:
+                    actual_field_name = parts[2]
+                break
+
+        if actual_field_name is None:
+            continue
+
+        caps = actual_field_name[0].upper() + actual_field_name[1:]
 
         # Remove field declaration and preceding annotations
         new_lines = []
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("private ") and f" {field_name};" in stripped:
+            if stripped.startswith("private ") and f" {field_name};" in stripped.lower():
                 # Remove preceding annotation lines
                 while new_lines and new_lines[-1].strip().startswith("@"):
                     new_lines.pop()
@@ -886,11 +899,11 @@ def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> N
         content = "\n".join(lines)
 
         # Remove getter
-        getter = f"    public {field_type} get{caps}() {{\n        return {field_name};\n    }}\n\n"
+        getter = f"    public {field_type} get{caps}() {{\n        return {actual_field_name};\n    }}\n\n"
         content = content.replace(getter, "")
 
         # Remove setter
-        setter = f"    public void set{caps}({field_type} {field_name}) {{\n        this.{field_name} = {field_name};\n    }}\n\n"
+        setter = f"    public void set{caps}({field_type} {actual_field_name}) {{\n        this.{actual_field_name} = {actual_field_name};\n    }}\n\n"
         content = content.replace(setter, "")
 
         lines = content.splitlines()
