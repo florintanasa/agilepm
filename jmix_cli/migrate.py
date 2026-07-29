@@ -730,6 +730,72 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
     logger.info(f"✅ Injected new fields into {entity_name}.java")
 
 
+def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> None:
+    """Remove fields, getters, and setters from an existing Java entity file."""
+    entity_path = (
+        PROIECT_PATH
+        / "src"
+        / "main"
+        / "java"
+        / company_path
+        / project_name
+        / "entity"
+        / f"{entity_name}.java"
+    )
+    if not entity_path.exists():
+        return
+
+    content = entity_path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+
+    for field_name in fields_to_remove:
+        # Find the field type from the Java entity
+        field_type = None
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("private ") and f" {field_name};" in stripped:
+                parts = stripped.replace(";", "").split()
+                if len(parts) >= 3:
+                    field_type = parts[1]
+                break
+
+        if field_type is None:
+            continue
+
+        caps = field_name[0].upper() + field_name[1:]
+
+        # Remove field declaration and preceding annotations
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("private ") and f" {field_name};" in stripped:
+                # Remove preceding annotation lines
+                while new_lines and new_lines[-1].strip().startswith("@"):
+                    new_lines.pop()
+                # Also remove preceding blank line if present
+                if new_lines and new_lines[-1].strip() == "":
+                    new_lines.pop()
+                continue
+            new_lines.append(line)
+        lines = new_lines
+
+        # Remove getter and setter using string replacement
+        content = "\n".join(lines)
+
+        # Remove getter
+        getter = f"    public {field_type} get{caps}() {{\n        return {field_name};\n    }}\n\n"
+        content = content.replace(getter, "")
+
+        # Remove setter
+        setter = f"    public void set{caps}({field_type} {field_name}) {{\n        this.{field_name} = {field_name};\n    }}\n\n"
+        content = content.replace(setter, "")
+
+        lines = content.splitlines()
+
+    entity_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    logger.info(f"✅ Removed dropped fields from {entity_name}.java: {fields_to_remove}")
+
+
 def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     """Generate incremental Liquibase migrations for an entity.
     
@@ -835,6 +901,13 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     
     if missing_fields or added_field_dicts:
         new_fields = missing_fields + added_field_dicts
+        # Deduplicate by field name (case-insensitive) to prevent duplicate changelogs
+        seen_names: set[str] = set()
+        new_fields = [
+            f for f in new_fields
+            if f["name"].upper() not in seen_names
+            and not seen_names.add(f["name"].upper())
+        ]
         content = gen_add_column_changelog(entity_name, new_fields)
         target_dir = (
             PROIECT_PATH
@@ -923,6 +996,10 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
             if response.lower() != "y":
                 logger.info("Skipped dropping columns.")
                 return
+        
+        # Remove dropped fields from Java entity (normalize to lowercase)
+        if mode != "dry-run":
+            _remove_fields_from_java(entity_name, [name.lower() for name in all_dropped])
         
         if mode != "dry-run":
             content = gen_drop_column_changelog(entity_name, all_dropped)
