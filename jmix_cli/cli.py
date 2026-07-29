@@ -864,6 +864,11 @@ def main() -> None:
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
 
+        if action == "migrate-all":
+            logger.info("[*] Running incremental DB migrations for all entities...")
+            migrate_all_entities()
+            return
+
         if len(sys.argv) == 2:
             raise UserInputError("Missing required Entity Name parameter.")
 
@@ -871,10 +876,6 @@ def main() -> None:
 
         if action == "migrate":
             migrate_entity(name)
-
-        elif action == "migrate-all":
-            logger.info("[*] Running incremental DB migrations for all entities...")
-            migrate_all_entities()
 
         elif action == "entity":
             _generate_single_entity(name)
