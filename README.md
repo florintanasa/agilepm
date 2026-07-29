@@ -316,10 +316,30 @@ What they do:
   - renamed fields, changed types, changed `mandatory`/`unique` constraints
 
 Notes:
-- `migrate` skips the built-in `User` entity; use entity-specific UI commands for user extensions instead
+- **User entity support**: `migrate-all` now includes the built-in `User` entity. Custom fields added to `entities.csv` for `User` are injected into `User.java`, and incremental changelogs are generated with the correct `USER_` table name. Standard Jmix User fields (`username`, `firstName`, `lastName`, `email`, `active`, `timeZoneId`) are never dropped.
+- **Changelog-aware detection**: `detect_dropped_columns` combines columns from both the live database (`.jmix/hsqldb.script`) and existing Liquibase changelog XML files, so dropped columns are detected even when no database is running. Changelogs are processed in filename order to correctly track add→drop→re-add sequences.
+- **Already-dropped exclusion**: `_get_already_dropped_columns` parses existing `dropColumn` changesets to prevent re-detecting and re-dropping the same column across multiple `migrate` runs.
+- **Duplicate prevention**: New fields are deduplicated by name (case-insensitive) before changelog generation to prevent duplicate Liquibase changesets. Re-added fields (added, dropped, then re-added to `entities.csv`) are correctly handled without generating duplicate addField changelogs.
+- **Rename detection**: The tool compares previous field names from existing generated files; a rename is only detected when the old and new field names share at least 3 characters of common prefix (e.g. `firstName` → `firstName2`), preventing false positives when unrelated fields of the same type are added or removed.
+- **Metadata change detection**: `detect_field_metadata_changes` scans backward to the previous `private` field declaration to determine the annotation block boundary, preventing false-positive `@NotNull` detection when adjacent fields have `@NotNull`.
 - Dropped columns are destructive; the command prompts before writing the Liquibase change and before removing the field from the Java entity
-- For rename detection, the tool compares previous field names from existing generated files; a rename is only detected when the old and new field names share at least 3 characters of common prefix (e.g. `firstName` → `firstName2`), preventing false positives when unrelated fields of the same type are added or removed
-- New fields are deduplicated by name (case-insensitive) before changelog generation to prevent duplicate Liquibase changesets
+
+### ui-list-all / ui-detail-all with User entity
+
+```bash
+# Generate/update ALL list views
+python3 jmix-cli.py ui-list-all
+
+# Generate/update ALL detail views
+python3 jmix-cli.py ui-detail-all
+```
+
+For the built-in `User` entity, `ui-list-all` and `ui-detail-all` do **not** regenerate views from `entities.csv` (which would overwrite standard User fields). Instead, they:
+- **Inject new fields** from `entities.csv` as columns (`user-list-view.xml`) or form components (`user-detail-view.xml`) into the existing views
+- **Inject new relations** from `relations.csv` into the existing views
+- **Remove dropped fields** that are no longer in `entities.csv` (excluding standard User fields)
+
+This ensures that standard User fields (username, firstName, lastName, email, active, timeZoneId) are preserved in the views while custom fields are kept in sync with `entities.csv`.
 
 ### Dry-Run Mode
 
