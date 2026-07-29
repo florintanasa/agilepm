@@ -711,23 +711,19 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     
     db_adapter = HSQLDBAdapter()
     
-    # Inject new fields into existing Java entity first
-    if missing_fields := detect_missing_columns(entity_name, db_adapter):
-        if mode != "quiet":
-            logger.info(f"Injecting {len(missing_fields)} new fields into {entity_name}.java...")
-        inject_new_fields_into_existing_entity(entity_name, missing_fields)
-        
-        # Update messages for new fields
-        if mode != "dry-run" and mode != "quiet":
-            new_field_names = [f["name"] for f in missing_fields]
-            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
-    
-    # Detect dropped columns
-    dropped_columns = detect_dropped_columns(entity_name, db_adapter)
-    
-    # Detect added, dropped, and renamed fields
+    # Detect added, dropped, and renamed fields BEFORE injecting anything.
+    # This is critical: if we inject new fields first, rename detection
+    # won't work because the new field will already be in the Java file.
     added_fields, dropped_from_csv, renamed_fields = detect_changed_fields(entity_name)
     metadata_changes = detect_field_metadata_changes(entity_name)
+    
+    # Build sets of renamed field names for exclusion
+    renamed_old_names = {old for old, _ in renamed_fields}
+    renamed_new_names = {new for _, new in renamed_fields}
+    
+    # Detect missing columns from DB/changelogs (excluding renamed fields)
+    all_missing = detect_missing_columns(entity_name, db_adapter)
+    missing_fields = [f for f in all_missing if f["name"] not in renamed_new_names]
     
     table_name = entity_name.upper()
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -746,25 +742,59 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         )
         if entity_path.exists():
             java_content = entity_path.read_text(encoding="utf-8")
+            csv_fields = _read_entity_fields(entity_name)
             for old_name, new_name in renamed_fields:
+                field_type = next(f["type"] for f in csv_fields if f["name"] == new_name)
+                old_caps = old_name[0].upper() + old_name[1:]
+                new_caps = new_name[0].upper() + new_name[1:]
+                # Rename field declaration
                 java_content = java_content.replace(
-                    f"private {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} {old_name};",
-                    f"private {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} {new_name};",
+                    f"private {field_type} {old_name};",
+                    f"private {field_type} {new_name};",
                 )
+                # Rename getter method name
                 java_content = java_content.replace(
-                    f"public {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} get{old_name[0].upper() + old_name[1:]}()",
-                    f"public {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} get{new_name[0].upper() + new_name[1:]}()",
+                    f"public {field_type} get{old_caps}()",
+                    f"public {field_type} get{new_caps}()",
                 )
+                # Rename setter method name and parameter
                 java_content = java_content.replace(
-                    f"this.{old_name} = {old_name};",
-                    f"this.{new_name} = {new_name};",
+                    f"public void set{old_caps}({field_type} {old_name})",
+                    f"public void set{new_caps}({field_type} {new_name})",
+                )
+                # Rename this.field references
+                java_content = java_content.replace(
+                    f"this.{old_name}",
+                    f"this.{new_name}",
                 )
                 entity_path.write_text(java_content, encoding="utf-8")
                 logger.info(f"✅ Renamed field in Java: {old_name} -> {new_name}")
     
-    # Generate changelog for missing fields
-    if missing_fields or added_fields:
-        new_fields = (missing_fields or []) + added_fields
+    # Inject new fields (excluding renamed ones)
+    if missing_fields:
+        if mode != "quiet":
+            logger.info(f"Injecting {len(missing_fields)} new fields into {entity_name}.java...")
+        inject_new_fields_into_existing_entity(entity_name, missing_fields)
+        
+        # Update messages for new fields
+        if mode != "dry-run" and mode != "quiet":
+            new_field_names = [f["name"] for f in missing_fields]
+            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
+    
+    # Detect dropped columns from DB
+    dropped_columns = detect_dropped_columns(entity_name, db_adapter)
+    
+    # Generate changelog for missing/added fields
+    # Convert added_fields (list of names) to dicts for changelog generation
+    csv_fields_by_name = {f["name"].lower(): f for f in _read_entity_fields(entity_name)}
+    added_field_dicts = [
+        csv_fields_by_name[name.lower()]
+        for name in added_fields
+        if name.lower() in csv_fields_by_name
+    ]
+    
+    if missing_fields or added_field_dicts:
+        new_fields = missing_fields + added_field_dicts
         content = gen_add_column_changelog(entity_name, new_fields)
         target_dir = (
             PROIECT_PATH
@@ -841,9 +871,11 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
                 logger.info(f"[dry-run] Would create: {filename}")
     
     # Handle dropped columns (case-insensitive dedup between DB and Java sources)
+    # Exclude renamed fields — they are handled by the rename changelog
     dropped_upper = {name.upper() for name in dropped_columns}
     all_dropped = list(dropped_columns) + [
-        name for name in dropped_from_csv if name.upper() not in dropped_upper
+        name for name in dropped_from_csv
+        if name.upper() not in dropped_upper and name not in renamed_old_names
     ]
     if all_dropped:
         if mode == "prompt":
