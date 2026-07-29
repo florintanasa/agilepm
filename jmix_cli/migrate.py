@@ -292,6 +292,250 @@ def detect_missing_relations(entity_name: str) -> list[dict[str, Any]]:
     return missing_rels
 
 
+def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
+    """Extract field metadata from an existing Java entity file."""
+    entity_path = (
+        PROIECT_PATH
+        / "src"
+        / "main"
+        / "java"
+        / company_path
+        / project_name
+        / "entity"
+        / f"{entity_name}.java"
+    )
+    fields: list[dict[str, Any]] = []
+    if not entity_path.exists():
+        return fields
+
+    content = entity_path.read_text(encoding="utf-8")
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("private "):
+            continue
+        if " getId()" in stripped or "getVersion()" in stripped:
+            continue
+        if "getCreatedBy()" in stripped or "getCreatedDate()" in stripped:
+            continue
+        if "getLastModifiedBy()" in stripped or "getLastModifiedDate()" in stripped:
+            continue
+        if "getDeletedBy()" in stripped or "getDeletedDate()" in stripped:
+            continue
+
+        declaration = stripped.strip(";")
+        parts = declaration.split()
+        if len(parts) >= 2:
+            f_type = parts[1]
+            f_name = parts[2].strip(";")
+            mandatory = "@NotNull" in content.split(f"private {f_type} {f_name};")[0].split("public UUID getId()")[0] if "public UUID getId()" in content else False
+            fields.append(
+                {
+                    "name": f_name,
+                    "type": f_type,
+                    "mandatory": mandatory,
+                    "unique": False,
+                }
+            )
+
+    return fields
+
+
+def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[str], list[tuple[str, str]]]:
+    """Detect dropped, added, and renamed fields for an entity.
+
+    Returns:
+        added_fields: fields in entities.csv but missing from existing Java
+        dropped_fields: fields in existing Java but missing from entities.csv
+        renamed_fields: list of (old_name, new_name) where a likely rename was detected
+    """
+    csv_fields = _read_entity_fields(entity_name)
+    csv_by_name = {f["name"].upper(): f for f in csv_fields}
+    java_fields = _get_fields_from_existing_java(entity_name)
+    java_by_name = {f["name"].upper(): f for f in java_fields}
+
+    dropped = []
+    for f in java_fields:
+        if f["name"].upper() not in csv_by_name:
+            dropped.append(f["name"])
+
+    added = []
+    for f in csv_fields:
+        if f["name"].upper() not in java_by_name:
+            added.append(f)
+
+    renamed: list[tuple[str, str]] = []
+    unmatched_dropped = []
+    unmatched_added = []
+    for dropped_name in dropped:
+        match = None
+        for added_field in added:
+            if added_field["type"] == next(
+                (f["type"] for f in java_fields if f["name"].upper() == dropped_name.upper()),
+                None,
+            ):
+                match = added_field
+                break
+        if match:
+            renamed.append((dropped_name, match["name"]))
+        else:
+            unmatched_dropped.append(dropped_name)
+
+    unmatched_added = [f["name"] for f in added if f["name"].upper() not in [n.upper() for _, n in renamed]]
+
+    return unmatched_added, unmatched_dropped + unmatched_added if not renamed else unmatched_dropped, renamed
+
+
+def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
+    """Detect type/mandatory/unique changes for existing fields."""
+    csv_fields = _read_entity_fields(entity_name)
+    java_fields = _get_fields_from_existing_java(entity_name)
+    java_by_name = {f["name"].upper(): f for f in java_fields}
+
+    changes: list[dict[str, Any]] = []
+    for csv_field in csv_fields:
+        upper_name = csv_field["name"].upper()
+        if upper_name not in java_by_name:
+            continue
+        java_field = java_by_name[upper_name]
+        if csv_field["type"] != java_field["type"]:
+            changes.append(
+                {
+                    "name": csv_field["name"],
+                    "change": "type",
+                    "old": java_field["type"],
+                    "new": csv_field["type"],
+                }
+            )
+        if csv_field["mandatory"] != java_field["mandatory"]:
+            changes.append(
+                {
+                    "name": csv_field["name"],
+                    "change": "nullable",
+                    "old": java_field["mandatory"],
+                    "new": csv_field["mandatory"],
+                }
+            )
+        if csv_field["unique"] != java_field["unique"]:
+            changes.append(
+                {
+                    "name": csv_field["name"],
+                    "change": "unique",
+                    "old": java_field["unique"],
+                    "new": csv_field["unique"],
+                }
+            )
+    return changes
+
+
+def gen_rename_column_changelog(entity_name: str, renames: list[tuple[str, str]]) -> str | None:
+    """Generate Liquibase changelog for renaming columns."""
+    if not renames:
+        return None
+
+    table_name = entity_name.upper()
+    change_sets = []
+    for old_name, new_name in renames:
+        change_id = f"{entity_name.lower()}-rename-{old_name.lower()}-to-{new_name.lower()}"
+        change_sets.append(
+            f"""    <changeSet id="{change_id}" author="{project_name}">
+        <renameColumn tableName="{table_name}" oldColumnName="{old_name.upper()}" newColumnName="{new_name.upper()}"/>
+    </changeSet>"""
+        )
+
+    content = f"""<?xml version="1.0" encoding="UTF-8" ?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+    objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS"
+>
+{os.linesep.join(change_sets)}
+</databaseChangeLog>
+"""
+    return content
+
+
+def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]]) -> str | None:
+    """Generate Liquibase changelog for modifying column type/nullable/unique constraints."""
+    if not changes:
+        return None
+
+    table_name = entity_name.upper()
+    change_sets = []
+    for change in changes:
+        field_name = change["name"].upper()
+        change_type = change["change"]
+
+        if change_type == "type":
+            sql_type = map_type_to_sql(change["new"])
+            change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-type"
+            change_sets.append(
+                f"""    <changeSet id="{change_id}" author="{project_name}">
+        <modifyDataType tableName="{table_name}" columnName="{change['name']}" newDataType="{sql_type}"/>
+    </changeSet>"""
+            )
+        elif change_type == "nullable":
+            change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-nullable"
+            if change["new"]:
+                change_sets.append(
+                    f"""    <changeSet id="{change_id}" author="{project_name}">
+        <dropNullableConstraint
+            tableName="{table_name}"
+            columnName="{change['name']}"
+            constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
+        />
+    </changeSet>"""
+                )
+            else:
+                change_sets.append(
+                    f"""    <changeSet id="{change_id}" author="{project_name}">
+        <addNotNullConstraint
+            tableName="{table_name}"
+            columnName="{change['name']}"
+            constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
+        />
+    </changeSet>"""
+                )
+        elif change_type == "unique":
+            change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-unique"
+            if change["new"]:
+                change_sets.append(
+                    f"""    <changeSet id="{change_id}" author="{project_name}">
+        <addUniqueConstraint
+            tableName="{table_name}"
+            columnNames="{change['name'].upper()}"
+            constraintName="{table_name}_{change['name'].upper()}_UNQ"
+        />
+    </changeSet>"""
+                )
+            else:
+                change_sets.append(
+                    f"""    <changeSet id="{change_id}" author="{project_name}">
+        <dropUniqueConstraint
+            tableName="{table_name}"
+            constraintName="{table_name}_{change['name'].upper()}_UNQ"
+        />
+    </changeSet>"""
+                )
+
+    if not change_sets:
+        return None
+
+    content = f"""<?xml version="1.0" encoding="UTF-8" ?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+    objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS"
+>
+{os.linesep.join(change_sets)}
+</databaseChangeLog>
+"""
+    return content
+
+
 def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[str]:
     """Detect columns that exist in database but not in entity (soft warning)."""
     table_name = entity_name.upper()
@@ -458,12 +702,47 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     # Detect dropped columns
     dropped_columns = detect_dropped_columns(entity_name, db_adapter)
     
+    # Detect added, dropped, and renamed fields
+    added_fields, dropped_from_csv, renamed_fields = detect_changed_fields(entity_name)
+    metadata_changes = detect_field_metadata_changes(entity_name)
+    
     table_name = entity_name.upper()
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     
+    # Handle renamed fields: update Java entity in-place
+    if renamed_fields:
+        entity_path = (
+            PROIECT_PATH
+            / "src"
+            / "main"
+            / "java"
+            / company_path
+            / project_name
+            / "entity"
+            / f"{entity_name}.java"
+        )
+        if entity_path.exists():
+            java_content = entity_path.read_text(encoding="utf-8")
+            for old_name, new_name in renamed_fields:
+                java_content = java_content.replace(
+                    f"private {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} {old_name};",
+                    f"private {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} {new_name};",
+                )
+                java_content = java_content.replace(
+                    f"public {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} get{old_name[0].upper() + old_name[1:]}()",
+                    f"public {next(f['type'] for f in _read_entity_fields(entity_name) if f['name'] == new_name)} get{new_name[0].upper() + new_name[1:]}()",
+                )
+                java_content = java_content.replace(
+                    f"this.{old_name} = {old_name};",
+                    f"this.{new_name} = {new_name};",
+                )
+                entity_path.write_text(java_content, encoding="utf-8")
+                logger.info(f"✅ Renamed field in Java: {old_name} -> {new_name}")
+    
     # Generate changelog for missing fields
-    if missing_fields:
-        content = gen_add_column_changelog(entity_name, missing_fields)
+    if missing_fields or added_fields:
+        new_fields = (missing_fields or []) + added_fields
+        content = gen_add_column_changelog(entity_name, new_fields)
         target_dir = (
             PROIECT_PATH
             / "src"
@@ -480,7 +759,7 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         filename = target_dir / f"{timestamp}-alter-{table_name}-addField.xml"
         
         if mode != "quiet":
-            logger.info(f"Generating incremental migration for {entity_name}: add columns {missing_fields}")
+            logger.info(f"Generating incremental migration for {entity_name}: add columns {new_fields}")
         if mode != "dry-run":
             write_file(filename, content)
             if mode != "quiet":
@@ -488,16 +767,67 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         else:
             logger.info(f"[dry-run] Would create: {filename}")
     
+    # Generate rename changelog
+    if renamed_fields:
+        rename_content = gen_rename_column_changelog(entity_name, renamed_fields)
+        if rename_content:
+            target_dir = (
+                PROIECT_PATH
+                / "src"
+                / "main"
+                / "resources"
+                / company_path
+                / project_name
+                / "liquibase"
+                / "changelog"
+                / datetime.now().strftime("%Y")
+                / datetime.now().strftime("%m")
+            )
+            ensure_dir(str(target_dir))
+            filename = target_dir / f"{timestamp}-alter-{table_name}-renameField.xml"
+            if mode != "dry-run":
+                write_file(filename, rename_content)
+                if mode != "quiet":
+                    logger.info(f"✨ Created rename changelog: {filename}")
+            else:
+                logger.info(f"[dry-run] Would create: {filename}")
+    
+    # Generate metadata changes changelog
+    if metadata_changes:
+        changes_content = gen_modify_column_changelog(entity_name, metadata_changes)
+        if changes_content:
+            target_dir = (
+                PROIECT_PATH
+                / "src"
+                / "main"
+                / "resources"
+                / company_path
+                / project_name
+                / "liquibase"
+                / "changelog"
+                / datetime.now().strftime("%Y")
+                / datetime.now().strftime("%m")
+            )
+            ensure_dir(str(target_dir))
+            filename = target_dir / f"{timestamp}-alter-{table_name}-modifyField.xml"
+            if mode != "dry-run":
+                write_file(filename, changes_content)
+                if mode != "quiet":
+                    logger.info(f"✨ Created modify changelog: {filename}")
+            else:
+                logger.info(f"[dry-run] Would create: {filename}")
+    
     # Handle dropped columns
-    if dropped_columns:
+    all_dropped = dropped_columns + [name for name in dropped_from_csv if name not in dropped_columns]
+    if all_dropped:
         if mode == "prompt":
-            response = input(f"⚠️  Warning: Columns {dropped_columns} will be DROPPED from {table_name} (data loss!). Continue? [y/N]: ")
+            response = input(f"⚠️  Warning: Columns {all_dropped} will be DROPPED from {table_name} (data loss!). Continue? [y/N]: ")
             if response.lower() != "y":
                 logger.info("Skipped dropping columns.")
                 return
         
         if mode != "dry-run":
-            content = gen_drop_column_changelog(entity_name, dropped_columns)
+            content = gen_drop_column_changelog(entity_name, all_dropped)
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             target_dir = (
                 PROIECT_PATH
@@ -514,7 +844,7 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
             ensure_dir(str(target_dir))
             filename = target_dir / f"{timestamp}-alter-{table_name}-dropField.xml"
             
-            logger.info(f"Generating incremental migration for {entity_name}: drop columns {dropped_columns}")
+            logger.info(f"Generating incremental migration for {entity_name}: drop columns {all_dropped}")
             write_file(filename, content)
             logger.info(f"⚠️ Created DROP changelog (data will be lost!): {filename}")
 

@@ -292,6 +292,33 @@ When `traits.csv` enables `audit_of_creation=true` or `audit_of_modification=tru
 
 This creates the underlying `AUDIT_LOGGED_ENTITY` schema automatically via Liquibase and enables the Audit UI screens.
 
+### migrate / migrate-all
+
+```bash
+# Incremental migration for one entity
+python3 jmix-cli.py migrate <EntityName>
+
+# Incremental migration for all entities from entities.csv
+python3 jmix-cli.py migrate-all
+```
+
+> [!WARNING]
+> `migrate` and `migrate-all` work **only against the current project**. They are not compatible with `--dry-run`, because the dry-run temp directory does not contain the `.jmix/` database state. Without that state, incremental migration cannot determine real missing/renamed/dropped columns.
+
+What they do:
+- Inspect the existing database schema via `.jmix/hsqldb.script` and existing Liquibase changelogs
+- Compare it against `entities.csv` and `relations.csv`
+- Inject missing fields into existing `.java` entity files
+- Generate incremental Liquibase changelogs for:
+  - new columns
+  - dropped columns (with confirmation prompt)
+  - renamed fields, changed types, changed `mandatory`/`unique` constraints
+
+Notes:
+- `migrate` skips the built-in `User` entity; use entity-specific UI commands for user extensions instead
+- Dropped columns are destructive; the command prompts before writing the Liquibase change
+- For rename detection, the tool compares previous field names from existing generated files; if old/new fields have the same type, it can emit a `renameColumn` change instead of a drop + add
+
 ### Dry-Run Mode
 
 ```bash
