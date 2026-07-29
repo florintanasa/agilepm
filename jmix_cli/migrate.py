@@ -242,11 +242,46 @@ def _read_entity_traits(entity_name: str) -> dict[str, Any]:
     return get_traits_from_csv("traits.csv", entity_name)
 
 
-def _get_relation_field_names(entity_name: str) -> set[str]:
-    """Get field names from relations.csv for the given entity (as source).
+def _read_all_relations() -> list[dict[str, Any]]:
+    """Read all relations from relations.csv with full source/target info.
 
-    Only returns non-List relation fields (N:1, 1:1, COMPOSITION_1:1)
-    since List<T> fields are already excluded by _get_fields_from_existing_java.
+    Unlike get_relations_from_csv (which filters by source entity), this
+    returns every row so callers can also check relations where the entity
+    is the *target*.
+    """
+    relations_list: list[dict[str, Any]] = []
+    csv_file = Path("relations.csv")
+    if not csv_file.exists():
+        return relations_list
+    with csv_file.open(mode="r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rel_dict: dict[str, Any] = {
+                "source": row["source_entity"].strip(),
+                "type": row["relation_type"].strip(),
+                "target": row["target_entity"].strip(),
+                "field": row["field_name"].strip(),
+                "mandatory": row["mandatory"].strip().lower() == "true",
+            }
+            if "ownership" in (reader.fieldnames or []):
+                rel_dict["ownership"] = row.get("ownership", "").strip()
+            relations_list.append(rel_dict)
+    return relations_list
+
+
+def _get_relation_field_names(entity_name: str) -> set[str]:
+    """Get field names from relations.csv for the given entity (as source or target).
+
+    For N:1, 1:1 relations: the forward field is on the *source* entity.
+    For COMPOSITION_1:1: ``_finalize_composition_relationships`` injects the
+    forward field (``{field}``, type = target) into the *source* entity, and
+    ``_inject_composition_into_parent`` may inject the inverse field
+    (``{source_entity_camelCase}``) into the *source* entity.  When the entity
+    is the *target* of a COMPOSITION_1:1, the forward field and/or the inverse
+    field may also be present (from previous ``build-all`` runs), so both are
+    excluded here as well.
+    List<T> fields (COMPOSITION_1:N, N:N) are excluded since they are already
+    skipped by _get_fields_from_existing_java.
     """
     from jmix_cli.entity import get_relations_from_csv
     relations = get_relations_from_csv("relations.csv", entity_name)
@@ -254,18 +289,40 @@ def _get_relation_field_names(entity_name: str) -> set[str]:
     for rel in relations:
         rel_type = rel["type"]
         field = rel["field"]
-        # N:1, 1:1, and COMPOSITION_1:1 generate non-List fields in Java
-        if rel_type in ("N:1", "1:1", "COMPOSITION_1:1"):
+        if rel_type in ("N:1", "1:1"):
             field_names.add(field.upper())
+        elif rel_type == "COMPOSITION_1:1":
+            # Forward field injected by _finalize_composition_relationships
+            field_names.add(field.upper())
+            # Inverse field injected by _inject_composition_into_parent
+            inv_field = entity_name[0].lower() + entity_name[1:]
+            field_names.add(inv_field.upper())
         # COMPOSITION_1:N and N:N generate List<T> fields, already skipped
+
+    # Also check relations where entity is the TARGET of COMPOSITION_1:1
+    for rel in _read_all_relations():
+        if rel["target"].upper() != entity_name.upper():
+            continue
+        if rel["type"] == "COMPOSITION_1:1":
+            # Forward field on target (if present from previous builds)
+            field_names.add(rel["field"].upper())
+            # Inverse field on target (if present from previous builds)
+            inv_field = rel["source"][0].lower() + rel["source"][1:]
+            field_names.add(inv_field.upper())
+
     return field_names
 
 
 def _get_relation_column_names(entity_name: str) -> set[str]:
     """Get FK column names from relations.csv for the given entity (as source).
 
-    For N:1, 1:1, and COMPOSITION_1:1 relations, the FK column is
-    '{field}_ID' on the source entity's table.
+    For N:1, 1:1, and COMPOSITION_1:1 relations where the entity is the
+    *source*: ``_finalize_composition_relationships`` injects
+    ``@JoinColumn(name = "{field}_ID")`` into the source entity, so the FK
+    column ``{field}_ID`` lives on the source entity's table.
+
+    When the entity is the *target* of a COMPOSITION_1:1, the FK column is on
+    the *source* entity's table, so nothing is added for the target.
     """
     from jmix_cli.entity import get_relations_from_csv
     relations = get_relations_from_csv("relations.csv", entity_name)
