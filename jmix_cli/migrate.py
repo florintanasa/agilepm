@@ -681,10 +681,11 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
 
 
 def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[str]:
-    """Detect columns that exist in database but not in entity (soft warning)."""
+    """Detect columns that exist in database/changelogs but not in entity (soft warning)."""
     table_name = entity_name.upper()
     entity_fields = _read_entity_fields(entity_name)
     db_columns = db_adapter.get_columns(table_name)
+    changelog_columns = get_existing_columns_from_changelogs(table_name)
 
     entity_columns = {f["name"].upper() for f in entity_fields}
     # Filter out system columns
@@ -692,7 +693,9 @@ def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> lis
     # Filter out relation FK columns (N:1, 1:1, COMPOSITION_1:1)
     relation_cols = _get_relation_column_names(entity_name)
 
-    dropped = [col for col in db_columns if col not in entity_columns and col not in system_cols and col not in relation_cols]
+    # Combine DB columns and changelog columns for comprehensive detection
+    all_existing = db_columns | changelog_columns
+    dropped = [col for col in all_existing if col not in entity_columns and col not in system_cols and col not in relation_cols]
     return dropped
 
 
