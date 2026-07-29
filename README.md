@@ -309,6 +309,7 @@ What they do:
 - Inspect the existing database schema via `.jmix/hsqldb.script` and existing Liquibase changelogs
 - Compare it against `entities.csv` and `relations.csv`
 - Inject missing fields into existing `.java` entity files
+- Remove dropped fields from existing `.java` entity files (field declaration, annotations, getter, and setter) when the user confirms the drop
 - Generate incremental Liquibase changelogs for:
   - new columns
   - dropped columns (with confirmation prompt)
@@ -316,8 +317,9 @@ What they do:
 
 Notes:
 - `migrate` skips the built-in `User` entity; use entity-specific UI commands for user extensions instead
-- Dropped columns are destructive; the command prompts before writing the Liquibase change
-- For rename detection, the tool compares previous field names from existing generated files; if old/new fields have the same type, it can emit a `renameColumn` change instead of a drop + add
+- Dropped columns are destructive; the command prompts before writing the Liquibase change and before removing the field from the Java entity
+- For rename detection, the tool compares previous field names from existing generated files; a rename is only detected when the old and new field names share at least 3 characters of common prefix (e.g. `firstName` → `firstName2`), preventing false positives when unrelated fields of the same type are added or removed
+- New fields are deduplicated by name (case-insensitive) before changelog generation to prevent duplicate Liquibase changesets
 
 ### Dry-Run Mode
 
