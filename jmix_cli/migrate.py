@@ -680,6 +680,47 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
     return content
 
 
+def _get_already_dropped_columns(table_name: str) -> set[str]:
+    """Get columns that have already been dropped by previous drop changelogs.
+
+    Parses all changelog XML files for dropColumn changesets targeting the
+    given table, so we don't repeatedly try to drop the same column.
+    """
+    changelog_dir = (
+        PROIECT_PATH
+        / "src"
+        / "main"
+        / "resources"
+        / company_path
+        / project_name
+        / "liquibase"
+        / "changelog"
+    )
+    dropped: set[str] = set()
+    if not changelog_dir.exists():
+        return dropped
+
+    for xml_file in changelog_dir.rglob("*.xml"):
+        try:
+            content = xml_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        # Look for dropColumn changesets targeting this table
+        if f"tableName=\"{table_name}\"" not in content:
+            continue
+        # Extract columnName from dropColumn entries
+        import re
+        for match in re.finditer(
+            r'<dropColumn[^>]*tableName="' + re.escape(table_name) + r'"[^>]*>',
+            content,
+        ):
+            tag = match.group(0)
+            col_match = re.search(r'columnName="([^"]+)"', tag)
+            if col_match:
+                dropped.add(col_match.group(1).upper())
+    return dropped
+
+
 def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[str]:
     """Detect columns that exist in database/changelogs but not in entity (soft warning)."""
     table_name = entity_name.upper()
@@ -693,9 +734,18 @@ def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> lis
     # Filter out relation FK columns (N:1, 1:1, COMPOSITION_1:1)
     relation_cols = _get_relation_column_names(entity_name)
 
+    # Exclude columns already dropped by previous drop changelogs
+    already_dropped = _get_already_dropped_columns(table_name)
+
     # Combine DB columns and changelog columns for comprehensive detection
     all_existing = db_columns | changelog_columns
-    dropped = [col for col in all_existing if col not in entity_columns and col not in system_cols and col not in relation_cols]
+    dropped = [
+        col for col in all_existing
+        if col not in entity_columns
+        and col not in system_cols
+        and col not in relation_cols
+        and col not in already_dropped
+    ]
     return dropped
 
 
