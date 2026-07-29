@@ -441,7 +441,11 @@ def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
                 "deletedBy", "deletedDate",
             ):
                 continue
-            block_start = max(0, idx - 10)
+            # Find the block between the previous field declaration and this one
+            block_start = idx - 1
+            while block_start >= 0 and not lines[block_start].strip().startswith("private "):
+                block_start -= 1
+            block_start += 1
             block = "\n".join(lines[block_start:idx])
             mandatory = "@NotNull" in block
             fields.append(
