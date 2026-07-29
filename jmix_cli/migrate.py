@@ -363,6 +363,26 @@ def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
     return fields
 
 
+def _names_are_similar(name1: str, name2: str) -> bool:
+    """Check if two field names are similar enough to be considered a rename.
+
+    Uses common prefix length as a heuristic — fields must share at least
+    3 characters in a common prefix to be considered a rename. This prevents
+    false-positive renames between unrelated fields of the same type
+    (e.g. companyName -> address).
+    """
+    if not name1 or not name2:
+        return False
+    min_len = min(len(name1), len(name2))
+    common_prefix_len = 0
+    for i in range(min_len):
+        if name1[i].lower() == name2[i].lower():
+            common_prefix_len += 1
+        else:
+            break
+    return common_prefix_len >= 3
+
+
 def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[str], list[tuple[str, str]]]:
     """Detect dropped, added, and renamed fields for an entity.
 
@@ -395,7 +415,7 @@ def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[
             if added_field["type"] == next(
                 (f["type"] for f in java_fields if f["name"].upper() == dropped_name.upper()),
                 None,
-            ):
+            ) and _names_are_similar(dropped_name, added_field["name"]):
                 match = added_field
                 break
         if match:
@@ -762,6 +782,11 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
                     f"private {field_type} {old_name};",
                     f"private {field_type} {new_name};",
                 )
+                # Rename getter return statement
+                java_content = java_content.replace(
+                    f"return {old_name};",
+                    f"return {new_name};",
+                )
                 # Rename getter method name
                 java_content = java_content.replace(
                     f"public {field_type} get{old_caps}()",
@@ -772,7 +797,12 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
                     f"public void set{old_caps}({field_type} {old_name})",
                     f"public void set{new_caps}({field_type} {new_name})",
                 )
-                # Rename this.field references
+                # Rename setter body (both this.field and parameter)
+                java_content = java_content.replace(
+                    f"this.{old_name} = {old_name};",
+                    f"this.{new_name} = {new_name};",
+                )
+                # Rename any remaining this.field references
                 java_content = java_content.replace(
                     f"this.{old_name}",
                     f"this.{new_name}",
