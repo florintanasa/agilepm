@@ -140,9 +140,12 @@ def get_existing_columns_from_changelogs(table_name: str) -> set[str]:
     
     Parses all XML changelog files to find columns already defined for the given table.
     Only extracts columns for the specific table, not all tables.
+    Processes changelogs in filename order to correctly track add/drop sequence:
+    a column that was added, dropped, then re-added will be included.
     """
     import re
     existing_columns = set()
+    dropped_columns = set()
     
     changelog_dir = (
         PROIECT_PATH
@@ -160,7 +163,10 @@ def get_existing_columns_from_changelogs(table_name: str) -> set[str]:
     
     table_upper = table_name.upper()
     
-    for xml_file in changelog_dir.rglob("*.xml"):
+    # Process files in sorted order to respect add/drop sequence
+    xml_files = sorted(changelog_dir.rglob("*.xml"))
+    
+    for xml_file in xml_files:
         try:
             content = xml_file.read_text(encoding="utf-8")
             
@@ -171,6 +177,9 @@ def get_existing_columns_from_changelogs(table_name: str) -> set[str]:
             # Pattern for addColumn: <changeSet ...> <addColumn tableName="TABLE_NAME"> ... <column name="COL" ...>
             add_column_pattern = rf'<addColumn\s+tableName="{table_upper}">(.*?)</addColumn>'
             
+            # Pattern for dropColumn: <dropColumn tableName="TABLE_NAME" columnName="COL"/>
+            drop_column_pattern = rf'<dropColumn\s+tableName="{table_upper}"\s+columnName="([^"]+)"'
+            
             # Extract all matches
             for pattern in [create_table_pattern, add_column_pattern]:
                 matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
@@ -179,7 +188,18 @@ def get_existing_columns_from_changelogs(table_name: str) -> set[str]:
                     col_pattern = r'column\s+name="([A-Z_][A-Z0-9_]*)"'
                     col_matches = re.findall(col_pattern, match)
                     for col in col_matches:
-                        existing_columns.add(col.upper())
+                        col_upper = col.upper()
+                        existing_columns.add(col_upper)
+                        # If this column was previously dropped, it's now re-added
+                        dropped_columns.discard(col_upper)
+            
+            # Collect dropped columns
+            drop_matches = re.findall(drop_column_pattern, content, re.IGNORECASE)
+            for col in drop_matches:
+                col_upper = col.upper()
+                dropped_columns.add(col_upper)
+                # Remove from existing if it was added before
+                existing_columns.discard(col_upper)
                 
         except OSError:
             continue
@@ -991,6 +1011,15 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     missing_fields = [f for f in all_missing if f["name"] not in renamed_new_names]
     
     table_name = entity_name.upper()
+    
+    # Exclude added_fields that are already in changelogs as addColumn
+    # (prevents re-adding fields that were added, dropped, and re-added)
+    changelog_cols = get_existing_columns_from_changelogs(table_name)
+    added_fields = [
+        name for name in added_fields
+        if name.upper() not in changelog_cols
+    ]
+    
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     
     # Handle renamed fields: update Java entity in-place
@@ -1054,6 +1083,25 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         # Update messages for new fields
         if mode != "dry-run" and mode != "quiet":
             new_field_names = [f["name"] for f in missing_fields]
+            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
+    
+    # Also inject fields that are in CSV + changelog but missing from Java
+    # (e.g., field was added, dropped, and re-added to CSV)
+    csv_fields = _read_entity_fields(entity_name)
+    java_fields = _get_fields_from_existing_java(entity_name)
+    java_field_names = {f["name"].upper() for f in java_fields}
+    re_added_fields = [
+        f for f in csv_fields
+        if f["name"].upper() not in java_field_names
+        and f["name"].upper() in changelog_cols
+    ]
+    if re_added_fields:
+        if mode != "quiet":
+            logger.info(f"Injecting {len(re_added_fields)} re-added fields into {entity_name}.java...")
+        inject_new_fields_into_existing_entity(entity_name, re_added_fields)
+        
+        if mode != "dry-run" and mode != "quiet":
+            new_field_names = [f["name"] for f in re_added_fields]
             update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
     
     # Detect dropped columns from DB
