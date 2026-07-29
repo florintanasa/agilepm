@@ -293,7 +293,7 @@ def detect_missing_relations(entity_name: str) -> list[dict[str, Any]]:
 
 
 def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
-    """Extract field metadata from an existing Java entity file."""
+    """Extract business field metadata from an existing Java entity file."""
     entity_path = (
         PROIECT_PATH
         / "src"
@@ -309,17 +309,12 @@ def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
         return fields
 
     content = entity_path.read_text(encoding="utf-8")
-    for line in content.splitlines():
+    lines = content.splitlines()
+    for idx, line in enumerate(lines):
         stripped = line.strip()
         if not stripped.startswith("private "):
             continue
-        if " getId()" in stripped or "getVersion()" in stripped:
-            continue
-        if "getCreatedBy()" in stripped or "getCreatedDate()" in stripped:
-            continue
-        if "getLastModifiedBy()" in stripped or "getLastModifiedDate()" in stripped:
-            continue
-        if "getDeletedBy()" in stripped or "getDeletedDate()" in stripped:
+        if "<" in stripped:
             continue
 
         declaration = stripped.strip(";")
@@ -327,7 +322,16 @@ def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
         if len(parts) >= 2:
             f_type = parts[1]
             f_name = parts[2].strip(";")
-            mandatory = "@NotNull" in content.split(f"private {f_type} {f_name};")[0].split("public UUID getId()")[0] if "public UUID getId()" in content else False
+            # Skip system/audit fields that are not defined in entities.csv
+            if f_name in (
+                "id", "version", "createdBy", "createdDate",
+                "lastModifiedBy", "lastModifiedDate",
+                "deletedBy", "deletedDate",
+            ):
+                continue
+            block_start = max(0, idx - 10)
+            block = "\n".join(lines[block_start:idx])
+            mandatory = "@NotNull" in block
             fields.append(
                 {
                     "name": f_name,
@@ -382,7 +386,7 @@ def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[
 
     unmatched_added = [f["name"] for f in added if f["name"].upper() not in [n.upper() for _, n in renamed]]
 
-    return unmatched_added, unmatched_dropped + unmatched_added if not renamed else unmatched_dropped, renamed
+    return unmatched_added, unmatched_dropped, renamed
 
 
 def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
@@ -817,8 +821,11 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
             else:
                 logger.info(f"[dry-run] Would create: {filename}")
     
-    # Handle dropped columns
-    all_dropped = dropped_columns + [name for name in dropped_from_csv if name not in dropped_columns]
+    # Handle dropped columns (case-insensitive dedup between DB and Java sources)
+    dropped_upper = {name.upper() for name in dropped_columns}
+    all_dropped = list(dropped_columns) + [
+        name for name in dropped_from_csv if name.upper() not in dropped_upper
+    ]
     if all_dropped:
         if mode == "prompt":
             response = input(f"⚠️  Warning: Columns {all_dropped} will be DROPPED from {table_name} (data loss!). Continue? [y/N]: ")
