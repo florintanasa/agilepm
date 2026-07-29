@@ -26,6 +26,7 @@
 
 import csv
 import os
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -292,6 +293,23 @@ def detect_missing_relations(entity_name: str) -> list[dict[str, Any]]:
     return missing_rels
 
 
+def _get_unique_columns_from_java(content: str) -> set[str]:
+    """Extract column names that have a unique constraint from the @Table annotation.
+
+    Parses @Index entries with unique=true and returns the column names
+    (uppercased) from their columnList attribute.
+    """
+    unique_columns: set[str] = set()
+    for match in re.finditer(r'@Index\s*\(([^)]*)\)', content, re.DOTALL):
+        index_body = match.group(1)
+        if re.search(r'unique\s*=\s*true', index_body):
+            col_match = re.search(r'columnList\s*=\s*"([^"]+)"', index_body)
+            if col_match:
+                for col in col_match.group(1).split(','):
+                    unique_columns.add(col.strip().upper())
+    return unique_columns
+
+
 def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
     """Extract business field metadata from an existing Java entity file."""
     entity_path = (
@@ -309,6 +327,7 @@ def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
         return fields
 
     content = entity_path.read_text(encoding="utf-8")
+    unique_columns = _get_unique_columns_from_java(content)
     lines = content.splitlines()
     for idx, line in enumerate(lines):
         stripped = line.strip()
@@ -337,7 +356,7 @@ def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
                     "name": f_name,
                     "type": f_type,
                     "mandatory": mandatory,
-                    "unique": False,
+                    "unique": f_name.upper() in unique_columns,
                 }
             )
 
