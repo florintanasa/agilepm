@@ -242,6 +242,42 @@ def _read_entity_traits(entity_name: str) -> dict[str, Any]:
     return get_traits_from_csv("traits.csv", entity_name)
 
 
+def _get_relation_field_names(entity_name: str) -> set[str]:
+    """Get field names from relations.csv for the given entity (as source).
+
+    Only returns non-List relation fields (N:1, 1:1, COMPOSITION_1:1)
+    since List<T> fields are already excluded by _get_fields_from_existing_java.
+    """
+    from jmix_cli.entity import get_relations_from_csv
+    relations = get_relations_from_csv("relations.csv", entity_name)
+    field_names: set[str] = set()
+    for rel in relations:
+        rel_type = rel["type"]
+        field = rel["field"]
+        # N:1, 1:1, and COMPOSITION_1:1 generate non-List fields in Java
+        if rel_type in ("N:1", "1:1", "COMPOSITION_1:1"):
+            field_names.add(field.upper())
+        # COMPOSITION_1:N and N:N generate List<T> fields, already skipped
+    return field_names
+
+
+def _get_relation_column_names(entity_name: str) -> set[str]:
+    """Get FK column names from relations.csv for the given entity (as source).
+
+    For N:1, 1:1, and COMPOSITION_1:1 relations, the FK column is
+    '{field}_ID' on the source entity's table.
+    """
+    from jmix_cli.entity import get_relations_from_csv
+    relations = get_relations_from_csv("relations.csv", entity_name)
+    column_names: set[str] = set()
+    for rel in relations:
+        rel_type = rel["type"]
+        field = rel["field"].upper()
+        if rel_type in ("N:1", "1:1", "COMPOSITION_1:1"):
+            column_names.add(f"{field}_ID")
+    return column_names
+
+
 def detect_missing_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[dict[str, Any]]:
     """Detect columns that exist in entity but not in database or existing changelogs."""
     table_name = entity_name.upper()
@@ -396,9 +432,13 @@ def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[
     java_fields = _get_fields_from_existing_java(entity_name)
     java_by_name = {f["name"].upper(): f for f in java_fields}
 
+    # Exclude relation fields (N:1, 1:1, COMPOSITION_1:1) from dropped detection
+    # since they are defined in relations.csv, not entities.csv
+    relation_field_names = _get_relation_field_names(entity_name)
+
     dropped = []
     for f in java_fields:
-        if f["name"].upper() not in csv_by_name:
+        if f["name"].upper() not in csv_by_name and f["name"].upper() not in relation_field_names:
             dropped.append(f["name"])
 
     added = []
@@ -584,12 +624,14 @@ def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> lis
     table_name = entity_name.upper()
     entity_fields = _read_entity_fields(entity_name)
     db_columns = db_adapter.get_columns(table_name)
-    
+
     entity_columns = {f["name"].upper() for f in entity_fields}
     # Filter out system columns
     system_cols = {"ID", "VERSION", "CREATED_BY", "CREATED_DATE", "LAST_MODIFIED_BY", "LAST_MODIFIED_DATE", "DELETED_BY", "DELETED_DATE"}
-    
-    dropped = [col for col in db_columns if col not in entity_columns and col not in system_cols]
+    # Filter out relation FK columns (N:1, 1:1, COMPOSITION_1:1)
+    relation_cols = _get_relation_column_names(entity_name)
+
+    dropped = [col for col in db_columns if col not in entity_columns and col not in system_cols and col not in relation_cols]
     return dropped
 
 
