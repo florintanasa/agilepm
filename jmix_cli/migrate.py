@@ -578,7 +578,17 @@ def gen_add_column_changelog(entity_name: str, fields: list[dict[str, Any]]) -> 
     table_name = entity_name.upper()
     change_sets = []
     
+    # Deduplicate fields by name (case-insensitive) to prevent duplicate changesets
+    seen_names: set[str] = set()
+    unique_fields: list[dict[str, Any]] = []
     for field in fields:
+        name_upper = field["name"].upper()
+        if name_upper in seen_names:
+            continue
+        seen_names.add(name_upper)
+        unique_fields.append(field)
+    
+    for field in unique_fields:
         field_name = field["name"]
         sql_type = map_type_to_sql(field["type"])
         nullable = "false" if field["mandatory"] else "true"
