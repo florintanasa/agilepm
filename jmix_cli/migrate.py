@@ -39,6 +39,14 @@ from jmix_cli.entity import get_entities_from_csv, get_relations_from_csv
 logger = get_logger("jmix_cli.migrate")
 
 
+def get_table_name(entity_name: str) -> str:
+    """Get the database table name for an entity.
+
+    User entity uses USER_ table (Jmix convention).
+    """
+    return "USER_" if entity_name == "User" else entity_name.upper()
+
+
 def map_type_to_sql(java_type: str) -> str:
     """Map Java field type to SQL column type for Liquibase."""
     jt = java_type.lower()
@@ -357,7 +365,7 @@ def _get_relation_column_names(entity_name: str) -> set[str]:
 
 def detect_missing_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[dict[str, Any]]:
     """Detect columns that exist in entity but not in database or existing changelogs."""
-    table_name = entity_name.upper()
+    table_name = get_table_name(entity_name)
     entity_fields = _read_entity_fields(entity_name)
     
     # Get columns from both database and existing changelogs
@@ -596,7 +604,7 @@ def gen_rename_column_changelog(entity_name: str, renames: list[tuple[str, str]]
     if not renames:
         return None
 
-    table_name = entity_name.upper()
+    table_name = get_table_name(entity_name)
     change_sets = []
     for old_name, new_name in renames:
         change_id = f"{entity_name.lower()}-rename-{old_name.lower()}-to-{new_name.lower()}"
@@ -625,7 +633,7 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
     if not changes:
         return None
 
-    table_name = entity_name.upper()
+    table_name = get_table_name(entity_name)
     change_sets = []
     for change in changes:
         field_name = change["name"].upper()
@@ -743,7 +751,7 @@ def _get_already_dropped_columns(table_name: str) -> set[str]:
 
 def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[str]:
     """Detect columns that exist in database/changelogs but not in entity (soft warning)."""
-    table_name = entity_name.upper()
+    table_name = get_table_name(entity_name)
     entity_fields = _read_entity_fields(entity_name)
     db_columns = db_adapter.get_columns(table_name)
     changelog_columns = get_existing_columns_from_changelogs(table_name)
@@ -771,7 +779,7 @@ def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> lis
 
 def gen_add_column_changelog(entity_name: str, fields: list[dict[str, Any]]) -> str:
     """Generate Liquibase changelog for adding columns."""
-    table_name = entity_name.upper()
+    table_name = get_table_name(entity_name)
     change_sets = []
     
     # Deduplicate fields by name (case-insensitive) to prevent duplicate changesets
@@ -828,7 +836,7 @@ def gen_add_column_changelog(entity_name: str, fields: list[dict[str, Any]]) -> 
 def gen_drop_column_changelog(entity_name: str, columns: list[str]) -> str:
     """Generate Liquibase changelog for dropping columns (with warning)."""
     import os
-    table_name = entity_name.upper()
+    table_name = get_table_name(entity_name)
     change_sets = []
     
     for col in columns:
@@ -1010,7 +1018,7 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     all_missing = detect_missing_columns(entity_name, db_adapter)
     missing_fields = [f for f in all_missing if f["name"] not in renamed_new_names]
     
-    table_name = entity_name.upper()
+    table_name = get_table_name(entity_name)
     
     # Exclude added_fields that are already in changelogs as addColumn
     # (prevents re-adding fields that were added, dropped, and re-added)
@@ -1211,7 +1219,10 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
             "FIRSTNAME", "LASTNAME", "TIMEZONEID", "USERPROFILE",
         }
     dropped_upper = {name.upper() for name in dropped_columns}
-    all_dropped = list(dropped_columns) + [
+    all_dropped = [
+        name for name in dropped_columns
+        if name.upper() not in user_standard_cols
+    ] + [
         name for name in dropped_from_csv
         if name.upper() not in dropped_upper
         and name.upper() not in user_standard_cols
