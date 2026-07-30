@@ -664,7 +664,7 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
                 # Field became non-mandatory → drop NOT NULL constraint
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
-        <dropNullableConstraint
+        <dropNotNullConstraint
             tableName="{table_name}"
             columnName="{change['name']}"
             constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
