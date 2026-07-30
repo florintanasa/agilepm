@@ -158,6 +158,7 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
             tgt_table = "USER_"
         if src_table == "USER":
             src_table = "USER_"
+            src_table_for_join = "USER_"
         if rel["type"] == "N:1":
             f_name = rel["field"].upper()
             col_name = f"{f_name}_ID"
@@ -213,11 +214,16 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
     </changeSet>"""
                 )
         elif rel["type"] == "N:N":
-            join_table = f"{src_table_for_join}_{tgt_table}_LINK"
-            src_fk = f"{src_table_for_join}_ID"
-            tgt_fk = f"{tgt_table}_ID"
+            # Use sorted table names so both sides of a bidirectional N:N
+            # produce the same join table name and changeset ID (Liquibase
+            # will only execute the first occurrence).
+            tables = sorted([src_table_for_join, tgt_table])
+            join_table = f"{tables[0]}_{tables[1]}_LINK"
+            src_fk = f"{tables[0]}_ID"
+            tgt_fk = f"{tables[1]}_ID"
+            nn_change_id = f"create-nn-{tables[0].lower()}_{tables[1].lower()}_link"
             change_sets.append(
-                f"""    <changeSet id="{_stable_changeset_id(name, f"create-nn-{join_table.lower()}")}" author="{project_name}">
+                f"""    <changeSet id="{nn_change_id}" author="{project_name}">
         <createTable tableName="{join_table}">
             <column name="{src_fk}" type="UUID">
                 <constraints nullable="false"/>
@@ -228,11 +234,11 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
         </createTable>
         <addPrimaryKey tableName="{join_table}" columnNames="{src_fk}, {tgt_fk}" constraintName="PK_{join_table}"/>
         <addForeignKeyConstraint baseTableName="{join_table}" baseColumnNames="{src_fk}"
-                                  constraintName="FK_{join_table}_ON_{src_table}"
-                                  referencedTableName="{src_table}" referencedColumnNames="ID"/>
+                                  constraintName="FK_{join_table}_ON_{tables[0]}"
+                                  referencedTableName="{tables[0]}" referencedColumnNames="ID"/>
         <addForeignKeyConstraint baseTableName="{join_table}" baseColumnNames="{tgt_fk}"
-                                  constraintName="FK_{join_table}_ON_{tgt_table}"
-                                  referencedTableName="{tgt_table}" referencedColumnNames="ID"/>
+                                  constraintName="FK_{join_table}_ON_{tables[1]}"
+                                  referencedTableName="{tables[1]}" referencedColumnNames="ID"/>
     </changeSet>"""
             )
 
