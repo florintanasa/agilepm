@@ -891,6 +891,36 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
         
         field_block = f"{validation_anno}{column_annotation}{field_declaration}"
         
+        # Build the unique @Index entry if needed
+        if field["unique"]:
+            table_name = entity_name.upper()
+            col_upper = f_name.upper()
+            idx_name = f"IDX_{table_name}_UNQ_{col_upper}"
+            index_entry = f'@Index(name = "{idx_name}", columnList = "{col_upper}", unique = true)'
+
+            # Ensure import is present
+            if "import jakarta.persistence.Index;" not in content:
+                content = content.replace(
+                    "import jakarta.persistence.*;",
+                    "import jakarta.persistence.*;\nimport jakarta.persistence.Index;",
+                )
+
+            # Append to @Table indexes array (or create one)
+            if re.search(r'@Table\([^)]*indexes\s*=\s*\{', content):
+                content = re.sub(
+                    r'(indexes\s*=\s*\{[^}]*?)(\s*\})',
+                    lambda m: _append_index_entry(m, index_entry),
+                    content,
+                    count=1,
+                )
+            else:
+                content = re.sub(
+                    r'@Table\(name\s*=\s*"([^"]+)"\)',
+                    lambda m: f'@Table(name = "{m.group(1)}", indexes = {{\n        {index_entry}\n    }})',
+                    content,
+                    count=1,
+                )
+
         # Find insertion point (before getId())
         if "    public UUID getId()" in content:
             content = content.replace(
