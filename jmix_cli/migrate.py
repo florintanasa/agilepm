@@ -650,9 +650,10 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
         elif change_type == "nullable":
             change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-nullable"
             if change["new"]:
+                # Field became mandatory → add NOT NULL constraint
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
-        <dropNullableConstraint
+        <addNotNullConstraint
             tableName="{table_name}"
             columnName="{change['name']}"
             constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
@@ -660,9 +661,10 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
     </changeSet>"""
                 )
             else:
+                # Field became non-mandatory → drop NOT NULL constraint
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
-        <addNotNullConstraint
+        <dropNullableConstraint
             tableName="{table_name}"
             columnName="{change['name']}"
             constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
@@ -993,6 +995,71 @@ def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> N
     logger.info(f"✅ Removed dropped fields from {entity_name}.java: {fields_to_remove}")
 
 
+def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[dict[str, Any]]) -> None:
+    """Update Java entity file to reflect metadata changes (mandatory, type, unique).
+
+    For 'nullable' changes: adds/removes @NotNull and updates @Column(nullable=...).
+    For 'type' changes: updates the field declaration, getter return type, and
+    setter parameter type.
+    """
+    entity_path = (
+        PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
+    )
+    if not entity_path.exists():
+        return
+
+    content = entity_path.read_text(encoding="utf-8")
+
+    for change in metadata_changes:
+        field_name = change["name"]
+        field_upper = field_name.upper()
+        change_type = change["change"]
+
+        if change_type == "nullable":
+            new_mandatory = change["new"]
+
+            if new_mandatory:
+                # Make mandatory: add @NotNull and nullable = false
+                old_col = f'@Column(name = "{field_upper}")'
+                new_col = f'@NotNull\n    @Column(name = "{field_upper}", nullable = false)'
+                if old_col in content and f'@Column(name = "{field_upper}", nullable = false)' not in content:
+                    content = content.replace(old_col, new_col)
+            else:
+                # Make non-mandatory: remove @NotNull and nullable = false
+                # First, remove nullable = false from @Column
+                old_col = f'@Column(name = "{field_upper}", nullable = false)'
+                new_col = f'@Column(name = "{field_upper}")'
+                content = content.replace(old_col, new_col)
+
+                # Then, remove @NotNull line in the annotation block before the field
+                # Regex: @NotNull followed by any annotation lines, then @Column for this field
+                pattern = rf'(    @NotNull\n)((?:    @\w+.*\n)*)(    @Column\(name = "{field_upper}"\))'
+                content = re.sub(pattern, r'\2\3', content)
+
+        elif change_type == "type":
+            old_type = change["old"]
+            new_type = change["new"]
+            # Update field declaration
+            content = content.replace(
+                f"private {old_type} {field_name};",
+                f"private {new_type} {field_name};",
+            )
+            # Update getter return type
+            f_caps = field_name[0].upper() + field_name[1:]
+            content = content.replace(
+                f"public {old_type} get{f_caps}()",
+                f"public {new_type} get{f_caps}()",
+            )
+            # Update setter parameter type
+            content = content.replace(
+                f"public void set{f_caps}({old_type} {field_name})",
+                f"public void set{f_caps}({new_type} {field_name})",
+            )
+
+    entity_path.write_text(content, encoding="utf-8")
+    logger.info(f"✅ Updated Java metadata for {entity_name}.java")
+
+
 def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     """Generate incremental Liquibase migrations for an entity.
     
@@ -1207,7 +1274,11 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
                     logger.info(f"✨ Created modify changelog: {filename}")
             else:
                 logger.info(f"[dry-run] Would create: {filename}")
-    
+
+    # Update Java entity file to reflect metadata changes (mandatory, type, unique)
+    if metadata_changes and mode != "dry-run":
+        _update_java_for_metadata_changes(entity_name, metadata_changes)
+
     # Handle dropped columns (case-insensitive dedup between DB and Java sources)
     # Exclude renamed fields — they are handled by the rename changelog
     # Exclude standard User fields that should never be dropped
