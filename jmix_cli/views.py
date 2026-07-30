@@ -183,6 +183,7 @@ def gen_detail_view_from_csv(
             )
 
     xml_relation_data_containers = ""
+    xml_relation_grids = ""
     for rel in relations_list:
         if (
             rel["type"] == "N:1"
@@ -227,13 +228,30 @@ def gen_detail_view_from_csv(
             xml_relation_data_containers += "                </query>\n"
             xml_relation_data_containers += "            </loader>\n"
             xml_relation_data_containers += "        </collection>\n"
-            xml_form_components += f'            <multiSelectComboBoxPicker id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
-            xml_form_components += "                <actions>\n"
-            xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
-            xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
-            xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
-            xml_form_components += "                </actions>\n"
-            xml_form_components += "            </multiSelectComboBoxPicker>\n"
+            # Determine the @InstanceName field (first String field) of the target entity
+            tgt_fields = get_entities_from_csv("entities.csv", tgt_class)
+            instance_name_field = "name"
+            for tf in tgt_fields:
+                if tf["type"].lower() == "string":
+                    instance_name_field = tf["name"]
+                    break
+            xml_relation_grids += f'        <vbox>\n'
+            xml_relation_grids += f'            <h3 text="msg://{COMPANY}.{project_name}.view.{tgt_lower}/{tgt_lower}ListView.title"/>\n'
+            xml_relation_grids += f'            <hbox id="buttonsPanel" classNames="buttons-panel">\n'
+            xml_relation_grids += f'                <button action="{f_name}DataGrid.add"/>\n'
+            xml_relation_grids += f'                <button action="{f_name}DataGrid.exclude"/>\n'
+            xml_relation_grids += f'            </hbox>\n'
+            xml_relation_grids += f'            <dataGrid id="{f_name}DataGrid" dataContainer="{tgt_lower}sDc"\n'
+            xml_relation_grids += f'                      width="100%" maxHeight="15rem">\n'
+            xml_relation_grids += f'                <actions>\n'
+            xml_relation_grids += f'                    <action id="add" type="list_add"/>\n'
+            xml_relation_grids += f'                    <action id="exclude" type="list_exclude"/>\n'
+            xml_relation_grids += f'                </actions>\n'
+            xml_relation_grids += f'                <columns>\n'
+            xml_relation_grids += f'                    <column property="{instance_name_field}"/>\n'
+            xml_relation_grids += f'                </columns>\n'
+            xml_relation_grids += f'            </dataGrid>\n'
+            xml_relation_grids += f'        </vbox>\n'
 
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
@@ -256,7 +274,7 @@ def gen_detail_view_from_csv(
     <layout classNames="fluid-layout" width="100%">
         <formLayout id="form" dataContainer="{lower_name}Dc">
 {xml_form_components}        </formLayout>
-        <hbox id="detailActions">
+{xml_relation_grids}        <hbox id="detailActions">
             <button id="saveAndCloseBtn" action="saveAction"/>
             <button id="closeBtn" action="closeAction"/>
         </hbox>

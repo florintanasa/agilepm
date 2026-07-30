@@ -13,3 +13,4 @@ User,1:1,UserProfile,profile,false,
 UserProfile,1:1,User,user,true,
 UserConfig,COMPOSITION_1:1,UserProfile,profile,true,
 Team,N:N,Client,clients,false,both-owning
+Client,N:N,Team,teams,false,both-owning
