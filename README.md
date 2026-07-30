@@ -322,6 +322,7 @@ Notes:
 - **Duplicate prevention**: New fields are deduplicated by name (case-insensitive) before changelog generation to prevent duplicate Liquibase changesets. Re-added fields (added, dropped, then re-added to `entities.csv`) are correctly handled without generating duplicate addField changelogs.
 - **Rename detection**: The tool compares previous field names from existing generated files; a rename is only detected when the old and new field names share at least 3 characters of common prefix (e.g. `firstName` → `firstName2`), preventing false positives when unrelated fields of the same type are added or removed.
 - **Metadata change detection**: `detect_field_metadata_changes` scans backward to the previous `private` field declaration to determine the annotation block boundary, preventing false-positive `@NotNull` detection when adjacent fields have `@NotNull`.
+- **Unique constraint synchronization**: When `unique` changes in `entities.csv`, `migrate`/`migrate-all` generates the matching Liquibase `<createIndex>`/`<dropIndex>` changeset (using the same `IDX_{TABLE}_UNQ_{FIELD}` index name as the base changelog) and synchronizes the Java `@Table(indexes = ...)` annotation — adding `@Index` entries with correct comma separation and `import jakarta.persistence.Index;`, or removing them and cleaning up empty `indexes` arrays.
 - Dropped columns are destructive; the command prompts before writing the Liquibase change and before removing the field from the Java entity
 
 ### ui-list-all / ui-detail-all with User entity
