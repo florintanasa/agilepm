@@ -784,6 +784,15 @@ def main() -> None:
                         inject_detail_ui_into_existing_user(relations_list, fields_list)
                 elif fields_list:
                     gen_detail_view_from_csv(ent, fields_list, relations_list)
+            # Post-process N:N relations: inject dataGrid in source and inverse entities
+            all_relations = []
+            for ent in ordered_list:
+                rels = get_relations_from_csv("relations.csv", ent)
+                for rel in rels:
+                    rel["source_entity"] = ent
+                all_relations.extend(rels)
+            inject_nn_datagrid_into_source_entity(all_relations)
+            inject_nn_grid_into_inverse_entity(all_relations)
             logger.info("\n✅ UI Detail views generation completed!")
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return

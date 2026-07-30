@@ -650,16 +650,7 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
         elif change_type == "nullable":
             change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-nullable"
             if change["new"]:
-                change_sets.append(
-                    f"""    <changeSet id="{change_id}" author="{project_name}">
-        <dropNullableConstraint
-            tableName="{table_name}"
-            columnName="{change['name']}"
-            constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
-        />
-    </changeSet>"""
-                )
-            else:
+                # Field became mandatory → add NOT NULL constraint
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
         <addNotNullConstraint
@@ -669,25 +660,32 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
         />
     </changeSet>"""
                 )
+            else:
+                # Field became non-mandatory → drop NOT NULL constraint
+                change_sets.append(
+                    f"""    <changeSet id="{change_id}" author="{project_name}">
+        <dropNotNullConstraint
+            tableName="{table_name}"
+            columnName="{change['name']}"
+            constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
+        />
+    </changeSet>"""
+                )
         elif change_type == "unique":
             change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-unique"
+            index_name = f"IDX_{table_name}_UNQ_{change['name'].upper()}"
             if change["new"]:
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
-        <addUniqueConstraint
-            tableName="{table_name}"
-            columnNames="{change['name'].upper()}"
-            constraintName="{table_name}_{change['name'].upper()}_UNQ"
-        />
+        <createIndex tableName="{table_name}" indexName="{index_name}" unique="true">
+            <column name="{change['name'].upper()}"/>
+        </createIndex>
     </changeSet>"""
                 )
             else:
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
-        <dropUniqueConstraint
-            tableName="{table_name}"
-            constraintName="{table_name}_{change['name'].upper()}_UNQ"
-        />
+        <dropIndex indexName="{index_name}" tableName="{table_name}"/>
     </changeSet>"""
                 )
 
@@ -893,6 +891,36 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
         
         field_block = f"{validation_anno}{column_annotation}{field_declaration}"
         
+        # Build the unique @Index entry if needed
+        if field["unique"]:
+            table_name = entity_name.upper()
+            col_upper = f_name.upper()
+            idx_name = f"IDX_{table_name}_UNQ_{col_upper}"
+            index_entry = f'@Index(name = "{idx_name}", columnList = "{col_upper}", unique = true)'
+
+            # Ensure import is present
+            if "import jakarta.persistence.Index;" not in content:
+                content = content.replace(
+                    "import jakarta.persistence.*;",
+                    "import jakarta.persistence.*;\nimport jakarta.persistence.Index;",
+                )
+
+            # Append to @Table indexes array (or create one)
+            if re.search(r'@Table\([^)]*indexes\s*=\s*\{', content):
+                content = re.sub(
+                    r'(indexes\s*=\s*\{[^}]*?)(\s*\})',
+                    lambda m: _append_index_entry(m, index_entry),
+                    content,
+                    count=1,
+                )
+            else:
+                content = re.sub(
+                    r'@Table\(name\s*=\s*"([^"]+)"\)',
+                    lambda m: f'@Table(name = "{m.group(1)}", indexes = {{\n        {index_entry}\n    }})',
+                    content,
+                    count=1,
+                )
+
         # Find insertion point (before getId())
         if "    public UUID getId()" in content:
             content = content.replace(
@@ -991,6 +1019,119 @@ def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> N
 
     entity_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     logger.info(f"✅ Removed dropped fields from {entity_name}.java: {fields_to_remove}")
+
+
+def _append_index_entry(match: re.Match, index_entry: str) -> str:
+    """Append an @Index entry to an existing @Table indexes array."""
+    indexes_content = match.group(1).rstrip()
+    closing = match.group(2)
+    if indexes_content.rstrip().endswith(","):
+        return indexes_content + "\n        " + index_entry + closing
+    return indexes_content + ",\n        " + index_entry + closing
+
+
+def _remove_index_entry(content: str, index_name: str) -> str:
+    """Remove an @Index entry from the @Table indexes array.
+
+    Handles first/last/only entry cases (with/without preceding or trailing comma).
+    If the indexes array becomes empty, removes the entire indexes = { ... } from @Table.
+    """
+    escaped = re.escape(index_name)
+    pattern = rf"(?:,)?\n[ \t]+@Index\(name\s*=\s*\"{escaped}\".*?\),?"
+    new_content = re.sub(pattern, "", content, count=1)
+    if re.search(r"indexes\s*=\s*\{\s*\}", new_content):
+        new_content = re.sub(r',\s*indexes\s*=\s*\{\s*\}', "", new_content)
+    return new_content
+
+
+def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[dict[str, Any]]) -> None:
+    """Update Java entity file to reflect metadata changes (mandatory, type, unique).
+
+    For 'nullable' changes: adds/removes @NotNull and updates @Column(nullable=...).
+    For 'type' changes: updates the field declaration, getter return type, and
+    setter parameter type.
+    """
+    entity_path = (
+        PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
+    )
+    if not entity_path.exists():
+        return
+
+    content = entity_path.read_text(encoding="utf-8")
+
+    for change in metadata_changes:
+        field_name = change["name"]
+        field_upper = field_name.upper()
+        change_type = change["change"]
+
+        if change_type == "nullable":
+            new_mandatory = change["new"]
+
+            if new_mandatory:
+                # Make mandatory: add @NotNull and nullable = false
+                old_col = f'@Column(name = "{field_upper}")'
+                new_col = f'@NotNull\n    @Column(name = "{field_upper}", nullable = false)'
+                if old_col in content and f'@Column(name = "{field_upper}", nullable = false)' not in content:
+                    content = content.replace(old_col, new_col)
+            else:
+                # Make non-mandatory: remove @NotNull and nullable = false
+                # First, remove nullable = false from @Column
+                old_col = f'@Column(name = "{field_upper}", nullable = false)'
+                new_col = f'@Column(name = "{field_upper}")'
+                content = content.replace(old_col, new_col)
+
+                # Then, remove @NotNull line in the annotation block before the field
+                # Regex: @NotNull followed by any annotation lines, then @Column for this field
+                pattern = rf'(    @NotNull\n)((?:    @\w+.*\n)*)(    @Column\(name = "{field_upper}"\))'
+                content = re.sub(pattern, r'\2\3', content)
+
+        elif change_type == "type":
+            old_type = change["old"]
+            new_type = change["new"]
+            # Update field declaration
+            content = content.replace(
+                f"private {old_type} {field_name};",
+                f"private {new_type} {field_name};",
+            )
+            # Update getter return type
+            f_caps = field_name[0].upper() + field_name[1:]
+            content = content.replace(
+                f"public {old_type} get{f_caps}()",
+                f"public {new_type} get{f_caps}()",
+            )
+            # Update setter parameter type
+            content = content.replace(
+                f"public void set{f_caps}({old_type} {field_name})",
+                f"public void set{f_caps}({new_type} {field_name})",
+            )
+
+        elif change_type == "unique":
+            table_name = entity_name.upper()
+            index_name = f"IDX_{table_name}_UNQ_{field_upper}"
+            index_entry = (
+                f'@Index(name = "{index_name}", columnList = "{field_upper}", unique = true)'
+            )
+
+            if change["new"]:
+                if re.search(r'@Table\([^)]*indexes\s*=\s*\{', content):
+                    content = re.sub(
+                        r'(indexes\s*=\s*\{[^}]*?)(\s*\})',
+                        lambda m: _append_index_entry(m, index_entry),
+                        content,
+                        count=1,
+                    )
+                else:
+                    content = re.sub(
+                        r'@Table\(name\s*=\s*"([^"]+)"\)',
+                        lambda m: f'@Table(name = "{m.group(1)}", indexes = {{\n        {index_entry}\n    }})',
+                        content,
+                        count=1,
+                    )
+            else:
+                content = _remove_index_entry(content, index_name)
+
+    entity_path.write_text(content, encoding="utf-8")
+    logger.info(f"✅ Updated Java metadata for {entity_name}.java")
 
 
 def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
@@ -1207,7 +1348,11 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
                     logger.info(f"✨ Created modify changelog: {filename}")
             else:
                 logger.info(f"[dry-run] Would create: {filename}")
-    
+
+    # Update Java entity file to reflect metadata changes (mandatory, type, unique)
+    if metadata_changes and mode != "dry-run":
+        _update_java_for_metadata_changes(entity_name, metadata_changes)
+
     # Handle dropped columns (case-insensitive dedup between DB and Java sources)
     # Exclude renamed fields — they are handled by the rename changelog
     # Exclude standard User fields that should never be dropped

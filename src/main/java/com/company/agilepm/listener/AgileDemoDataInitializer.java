@@ -1,4 +1,4 @@
-package com.company.agilepm.listener;
+/*package com.company.agilepm.listener;
 
 import com.company.agilepm.entity.*;
 import io.jmix.core.DataManager;
@@ -211,4 +211,4 @@ public class AgileDemoDataInitializer {
 		tc.setTask(task);
 		dm.save(tc);
 	}
-}
+	}*/
