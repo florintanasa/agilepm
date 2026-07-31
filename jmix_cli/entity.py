@@ -207,7 +207,16 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
             dinamic_imports.add("import jakarta.persistence.JoinColumn;")
             dinamic_imports.add("import jakarta.persistence.FetchType;")
             sql_fk_col = f"{f_name.upper()}_ID"
-            java_relation_fields += f'    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
+            join_props = f'name = "{sql_fk_col}"'
+            validation_annotation = ""
+            if rel["mandatory"]:
+                join_props += ", nullable = false"
+                validation_annotation = "    @NotNull\n"
+                dinamic_imports.add("import jakarta.validation.constraints.NotNull;")
+            java_relation_fields += f"    @JoinColumn({join_props})\n"
+            java_relation_fields += f"{validation_annotation}"
+            java_relation_fields += "    @OneToOne(fetch = FetchType.LAZY)\n"
+            java_relation_fields += f"    private {tgt_class} {f_name};\n\n"
             f_caps = f_name[0].upper() + f_name[1:]
             java_relation_methods += f"    public {tgt_class} get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
             java_relation_methods += f"    public void set{f_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"

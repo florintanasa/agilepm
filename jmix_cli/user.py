@@ -53,7 +53,8 @@ def _inject_n1(content: str, rel: dict[str, Any]) -> str:
     if rel["mandatory"]:
         validation_anno = "    @NotNull\n"
         content = _ensure_import(content, "jakarta.validation.constraints.NotNull")
-    field = f'    @JoinColumn(name = "{sql_col}")\n{validation_anno}    @ManyToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
+    join_col = f'@JoinColumn(name = "{sql_col}", nullable = false)' if rel["mandatory"] else f'@JoinColumn(name = "{sql_col}")'
+    field = f'    {join_col}\n{validation_anno}    @ManyToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
     caps = f_name[0].upper() + f_name[1:] if len(f_name) > 1 else f_name.upper()
     methods = f"    public {tgt_class} get{caps}() {{\n        return {f_name};\n    }}\n\n"
     methods += f"    public void set{caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
@@ -69,7 +70,12 @@ def _inject_11(content: str, rel: dict[str, Any]) -> str:
     if f"private {tgt_class} {f_name};" in content:
         return content
     sql_col = f"{f_name.upper()}_ID"
-    field = f'    @JoinColumn(name = "{sql_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
+    validation_anno = ""
+    if rel["mandatory"]:
+        validation_anno = "    @NotNull\n"
+        content = _ensure_import(content, "jakarta.validation.constraints.NotNull")
+    join_col = f'@JoinColumn(name = "{sql_col}", nullable = false)' if rel["mandatory"] else f'@JoinColumn(name = "{sql_col}")'
+    field = f'    {join_col}\n{validation_anno}    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
     caps = f_name[0].upper() + f_name[1:] if len(f_name) > 1 else f_name.upper()
     methods = f"    public {tgt_class} get{caps}() {{\n        return {f_name};\n    }}\n\n"
     methods += f"    public void set{caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
