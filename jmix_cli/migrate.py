@@ -351,6 +351,10 @@ def _get_relation_column_names(entity_name: str) -> set[str]:
 
     When the entity is the *target* of a COMPOSITION_1:1, the FK column is on
     the *source* entity's table, so nothing is added for the target.
+
+    Also reads existing @JoinColumn column names from the Java entity file,
+    so that relation field renames (e.g. priority → mumu) don't cause the old
+    FK column (PRIORITY_ID) to be falsely detected as dropped.
     """
     from jmix_cli.entity import get_relations_from_csv
     relations = get_relations_from_csv("relations.csv", entity_name)
@@ -360,6 +364,17 @@ def _get_relation_column_names(entity_name: str) -> set[str]:
         field = rel["field"].upper()
         if rel_type in ("N:1", "1:1", "COMPOSITION_1:1"):
             column_names.add(f"{field}_ID")
+
+    # Also scan existing Java entity for @JoinColumn column names
+    # to catch relation field renames (old column names that still exist in DB)
+    entity_path = (
+        PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
+    )
+    if entity_path.exists():
+        content = entity_path.read_text(encoding="utf-8")
+        for match in re.finditer(r'@JoinColumn\(name\s*=\s*"([^"]+)"', content):
+            column_names.add(match.group(1).upper())
+
     return column_names
 
 
@@ -657,7 +672,21 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
         if rel_type not in ("N:1", "1:1"):
             continue
         f_name = rel["field"]
-        col_name = f"{f_name.upper()}_ID"
+        csv_col_name = f"{f_name.upper()}_ID"
+
+        # Read the actual @JoinColumn column name from Java to handle renames
+        # (e.g., field renamed from 'priority' to 'mumu' but DB column stays PRIORITY_ID)
+        field_pattern = (
+            r'(@JoinColumn\(name\s*=\s*"(\w+_ID)"[^)]*\)\s*\n'
+            r'(?:    @NotNull\n)?\s*'
+            r'@(?:ManyToOne|OneToOne)\(fetch = FetchType\.LAZY\)\s*\n    )'
+            f'private {rel["target"]} {f_name};'
+        )
+        join_match = re.search(field_pattern, content)
+        if join_match:
+            col_name = join_match.group(2)
+        else:
+            col_name = csv_col_name
 
         # Check if @NotNull is present in the annotation block for this FK column.
         # Generated code has @JoinColumn first, then @NotNull, then @ManyToOne/@OneToOne.
@@ -703,6 +732,95 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
 
     return changes
 
+
+def _apply_relation_field_renames(entity_name: str) -> list[str]:
+    """Rename relation fields in Java if the field name in relations.csv
+    doesn't match the Java field name.
+
+    For N:1 and 1:1 relations, when the field_name in relations.csv changes
+    (e.g., from 'priority' to 'mumu'), this function updates the Java entity
+    field name, getter, and setter accordingly. The DB column name (e.g.,
+    PRIORITY_ID) stays the same, so no changelog is needed for the rename.
+
+    Returns list of renamed field names (old -> new) for logging.
+    """
+    from jmix_cli.entity import get_relations_from_csv
+
+    relations = get_relations_from_csv("relations.csv", entity_name)
+    if not relations:
+        return []
+
+    entity_path = (
+        PROIECT_PATH
+        / "src"
+        / "main"
+        / "java"
+        / company_path
+        / project_name
+        / "entity"
+        / f"{entity_name}.java"
+    )
+    if not entity_path.exists():
+        return []
+
+    content = entity_path.read_text(encoding="utf-8")
+    renamed: list[str] = []
+
+    for rel in relations:
+        rel_type = rel["type"].strip().upper()
+        if rel_type not in ("N:1", "1:1"):
+            continue
+        csv_field = rel["field"].strip()
+        tgt_class = rel["target"].strip()
+
+        # Find the existing relation field for this target type
+        # Pattern: @JoinColumn(name = "XXX_ID"...) ... private TargetType fieldName;
+        # The @JoinColumn may have nullable=false, and @NotNull may be present
+        simple_pattern = rf'@JoinColumn\(name\s*=\s*"(\w+_ID)"[^)]*\)\s*\n(?:    @NotNull\n)?\s*@(ManyToOne|OneToOne)\(fetch = FetchType\.LAZY\)\s*\n\s*private {tgt_class} (\w+);'
+        match = re.search(simple_pattern, content)
+        if match and match.group(3) != csv_field:
+            old_field = match.group(3)
+            new_field = csv_field
+            old_caps = old_field[0].upper() + old_field[1:]
+            new_caps = new_field[0].upper() + new_field[1:]
+
+            # Rename field declaration
+            content = content.replace(
+                f"private {tgt_class} {old_field};",
+                f"private {tgt_class} {new_field};",
+                1,
+            )
+            # Rename getter
+            content = content.replace(
+                f"public {tgt_class} get{old_caps}()",
+                f"public {tgt_class} get{new_caps}()",
+                1,
+            )
+            # Rename getter body
+            content = content.replace(
+                f"return {old_field};",
+                f"return {new_field};",
+                1,
+            )
+            # Rename setter
+            content = content.replace(
+                f"public void set{old_caps}({tgt_class} {old_field})",
+                f"public void set{new_caps}({tgt_class} {new_field})",
+                1,
+            )
+            # Rename setter body
+            content = content.replace(
+                f"this.{old_field} = {old_field};",
+                f"this.{new_field} = {new_field};",
+                1,
+            )
+            renamed.append(f"{old_field} -> {new_field}")
+
+    if renamed:
+        entity_path.write_text(content, encoding="utf-8")
+        logger.info(f"✅ Renamed relation fields in {entity_name}.java: {renamed}")
+
+    return renamed
 
 
 def gen_rename_column_changelog(entity_name: str, renames: list[tuple[str, str]]) -> str | None:
@@ -1283,6 +1401,11 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     from jmix_cli.i18n import update_messages_entity
     
     db_adapter = HSQLDBAdapter()
+    
+    # First, apply any relation field renames from relations.csv to Java
+    # (e.g., priority → mumu). This must happen before field detection
+    # so the Java file reflects the current relations.csv field names.
+    _apply_relation_field_renames(entity_name)
     
     # Detect added, dropped, and renamed fields BEFORE injecting anything.
     # This is critical: if we inject new fields first, rename detection
