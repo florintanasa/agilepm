@@ -1185,8 +1185,8 @@ def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[d
                     # Make mandatory: add nullable = false to @JoinColumn + add @NotNull
                     if f'@JoinColumn(name = "{col_name}", nullable = false)' not in content:
                         content = re.sub(
-                            r'(    @JoinColumn\(name\s*=\s*"' + col_name + r'"\))(\s*\n)(    @(?:ManyToOne|OneToOne))',
-                            r'\1, nullable = false\2    @NotNull\n\3',
+                            r'(    @JoinColumn\(name\s*=\s*"' + col_name + r'")(\s*\n)(    @(?:ManyToOne|OneToOne))',
+                            r'\1, nullable = false)\2    @NotNull\n\3',
                             content,
                             count=1,
                         )
