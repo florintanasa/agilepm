@@ -768,7 +768,7 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
         if f'id="{picker_id}"' in xml_content:
             picker_pattern = f'<multiSelectComboBoxPicker id="{picker_id}"[^>]*>.*?</multiSelectComboBoxPicker>'
             xml_content = re.sub(picker_pattern, '', xml_content, flags=re.DOTALL)
-            logger.info(f"   -> Removed multiSelectComboBoxPicker for {f_name} in {source_name}")
+            logger.debug(f"   -> Removed multiSelectComboBoxPicker for {f_name} in {source_name}")
 
         # For both-owning: replace class-based collection with property-based inside instance
         # Handle both <loader id="x"/> and <loader/> (no id)
@@ -780,13 +780,13 @@ def inject_nn_datagrid_into_source_entity(relations_list: list[dict[str, Any]]) 
             xml_content = xml_content.replace(old_inside1, new_inside)
             old_outside = f'\n        <collection id="{f_name}Dc" class="{COMPANY}.{project_name}.entity.{tgt_class}">.*?</collection>'
             xml_content = re.sub(old_outside, '', xml_content, flags=re.DOTALL)
-            logger.info(f" -> Moved collection inside instance for {f_name} in {source_name}")
+            logger.debug(f" -> Moved collection inside instance for {f_name} in {source_name}")
         elif old_inside2 in xml_content and f'class="{COMPANY}.{project_name}.entity.{tgt_class}"' in xml_content:
             xml_content = xml_content.replace(old_inside2, new_inside)
             # Remove the Jmix-generated collection id (lowercase class + s)
             old_outside = f'<collection id="{tgt_class[0].lower() + tgt_class[1:]}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">.*?</collection>'
             xml_content = re.sub(old_outside, '', xml_content, flags=re.DOTALL)
-            logger.info(f" -> Moved collection inside instance for {f_name} in {source_name}")
+            logger.debug(f" -> Moved collection inside instance for {f_name} in {source_name}")
 
         logger.info(f" 🖥️ Dynamic injecting N:N dataGrid in source: {source_name} Detail View")
 
