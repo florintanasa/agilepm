@@ -42,6 +42,27 @@ from jmix_cli.utils import (
 logger = get_logger("jmix_cli.views")
 
 
+# Mapping Java type (as in entities.csv) → Jmix textField datatype attribute.
+# Types not listed here (e.g. String) don't need a datatype (string is the default).
+_FIELD_TYPE_TO_DATATYPE: dict[str, str] = {
+    "int": "int",
+    "integer": "int",
+    "long": "long",
+    "double": "double",
+    "bigdecimal": "decimal",
+    "decimal": "decimal",
+    "float": "decimal",
+    "short": "int",
+    "biginteger": "decimal",
+}
+
+
+def _java_type_to_datatype(f_type: str) -> str | None:
+    """Return the Jmix ``datatype`` for a given Java field type, or ``None`` when
+    no explicit datatype is needed (e.g. String)."""
+    return _FIELD_TYPE_TO_DATATYPE.get(f_type.lower())
+
+
 def gen_list_view_from_csv(
     name: str, fields_list: list[dict[str, Any]], relations_list: list[dict[str, Any]] = []
 ) -> None:
@@ -178,9 +199,15 @@ def gen_detail_view_from_csv(
                 f'            <datePicker id="{f_name}Field" property="{f_name}"/>\n'
             )
         else:
-            xml_form_components += (
-                f'            <textField id="{f_name}Field" property="{f_name}"/>\n'
-            )
+            dt = _java_type_to_datatype(f_type)
+            if dt:
+                xml_form_components += (
+                    f'            <textField id="{f_name}Field" property="{f_name}" datatype="{dt}"/>\n'
+                )
+            else:
+                xml_form_components += (
+                    f'            <textField id="{f_name}Field" property="{f_name}"/>\n'
+                )
 
     xml_relation_data_containers = ""
     for rel in relations_list:
@@ -452,11 +479,15 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]], fi
     valid_fields = {f["name"] for f in fields_list} if fields_list else set()
     # Remove form components that are not in entities.csv and not standard User fields
     import re
-    for match in re.finditer(r'<textField id="([^"]+)Field" property="([^"]+)"/>', xml_content):
+    for match in re.finditer(r'<textField id="([^"]+)Field" property="([^"]+)"(?:\s+datatype="[^"]*")?/>', xml_content):
         component_id = match.group(1)
         prop_name = match.group(2)
         if prop_name not in valid_fields and prop_name not in user_standard_fields:
-            xml_content = xml_content.replace(f'<textField id="{component_id}Field" property="{prop_name}"/>\n', '')
+            xml_content = re.sub(
+                rf'<textField id="{component_id}Field" property="{prop_name}"(?:\s+datatype="[^"]*")?/>\n',
+                '',
+                xml_content,
+            )
             modified = True
     # Inject new fields from entities.csv as form components
     if fields_list:
@@ -467,7 +498,11 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]], fi
                 f'id="{component_id}"' not in xml_content
                 and f'id="{component_id}"' not in accumulated_form_components
             ):
-                ui_block = f'            <textField id="{component_id}" property="{f_name}"/>\n'
+                dt = _java_type_to_datatype(field.get("type", ""))
+                if dt:
+                    ui_block = f'            <textField id="{component_id}" property="{f_name}" datatype="{dt}"/>\n'
+                else:
+                    ui_block = f'            <textField id="{component_id}" property="{f_name}"/>\n'
                 accumulated_form_components += ui_block
                 modified = True
     for rel in relations_list:
