@@ -882,7 +882,8 @@ def main() -> None:
 
         if action == "migrate-all":
             logger.info("[*] Running incremental DB migrations for all entities...")
-            migrate_all_entities()
+            mode = "force" if "--force" in sys.argv else "prompt"
+            migrate_all_entities(mode)
             return
 
         if len(sys.argv) == 2:
@@ -891,7 +892,8 @@ def main() -> None:
         name = sys.argv[2]
 
         if action == "migrate":
-            migrate_entity(name)
+            mode = "force" if "--force" in sys.argv else "prompt"
+            migrate_entity(name, mode)
 
         elif action == "entity":
             _generate_single_entity(name)
