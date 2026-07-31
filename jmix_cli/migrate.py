@@ -414,6 +414,25 @@ def detect_missing_relations(entity_name: str) -> list[dict[str, Any]]:
     return missing_rels
 
 
+def _add_import_after(content: str, class_name: str) -> str:
+    """Add an import for ``class_name`` after the last existing import line.
+
+    If the import already exists, the content is returned unchanged.
+    """
+    full_import = f"import {class_name};"
+    if full_import in content:
+        return content
+    # Find the last import line and add after it
+    match = re.search(r'(import [^\n;]+;\n)(?!import)', content)
+    if match:
+        return content[:match.end()] + full_import + "\n" + content[match.end():]
+    # Fallback: add after package declaration
+    match = re.search(r'package [^;]+;\n', content)
+    if match:
+        return content[:match.end()] + "\n" + full_import + "\n" + content[match.end():]
+    return content
+
+
 def _get_unique_columns_from_java(content: str) -> set[str]:
     """Extract column names that have a unique constraint from the @Table annotation.
 
@@ -598,6 +617,93 @@ def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
             )
     return changes
 
+def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
+    """Detect mandatory (nullable) changes for relation fields defined in relations.csv.
+
+    Only N:1 and 1:1 relations are checked — these generate a single-valued
+    field with a ``@JoinColumn`` FK column in the Java entity.  The detection
+    compares the ``mandatory`` flag from ``relations.csv`` against the presence
+    of ``@NotNull`` directly above the ``@JoinColumn`` / ``@ManyToOne`` /
+    ``@OneToOne`` annotation block in the existing Java file.
+
+    Each returned change dict uses the FK column name (``<field>_ID``) as
+    ``column_name`` so it can flow through the same changelog / Java-update
+    pipeline as regular field nullable changes.
+    """
+    from jmix_cli.entity import get_relations_from_csv
+
+    relations = get_relations_from_csv("relations.csv", entity_name)
+    if not relations:
+        return []
+
+    entity_path = (
+        PROIECT_PATH
+        / "src"
+        / "main"
+        / "java"
+        / company_path
+        / project_name
+        / "entity"
+        / f"{entity_name}.java"
+    )
+    if not entity_path.exists():
+        return []
+
+    content = entity_path.read_text(encoding="utf-8")
+
+    changes: list[dict[str, Any]] = []
+    for rel in relations:
+        rel_type = rel["type"].strip().upper()
+        if rel_type not in ("N:1", "1:1"):
+            continue
+        f_name = rel["field"]
+        col_name = f"{f_name.upper()}_ID"
+
+        # Check if @NotNull is present in the annotation block for this FK column.
+        # Generated code has @JoinColumn first, then @NotNull, then @ManyToOne/@OneToOne.
+        # Pattern: @JoinColumn(name = "COL_NAME"...) optionally with nullable=false,
+        # followed by optional @NotNull, then @ManyToOne or @OneToOne
+        pattern = (
+            rf'    @JoinColumn\(name\s*=\s*"' + col_name + r'"(?:,\s*nullable\s*=\s*false)?\)\s*\n'
+            r'(    @NotNull\n)?'
+            r'    @(ManyToOne|OneToOne)'
+        )
+        match = re.search(pattern, content)
+        # Also check for @NotNull BEFORE @JoinColumn (alternative ordering)
+        if match is None or match.group(1) is None:
+            pattern_pre = (
+                r'    @NotNull\n'
+                rf'    @JoinColumn\(name\s*=\s*"' + col_name + r'"(?:,\s*nullable\s*=\s*false)?\)\s*\n'
+                r'    @(ManyToOne|OneToOne)'
+            )
+            match_pre = re.search(pattern_pre, content)
+            if match_pre:
+                java_mandatory = True
+            elif match:
+                java_mandatory = bool(match.group(1))
+            else:
+                java_mandatory = False
+        else:
+            java_mandatory = True
+
+        csv_mandatory = rel.get("mandatory", False)
+
+        if java_mandatory != csv_mandatory:
+            changes.append(
+                {
+                    "name": col_name.lower(),
+                    "column_name": col_name,
+                    "field_name": f_name,
+                    "change": "nullable",
+                    "old": java_mandatory,
+                    "new": csv_mandatory,
+                    "is_relation": True,
+                }
+            )
+
+    return changes
+
+
 
 def gen_rename_column_changelog(entity_name: str, renames: list[tuple[str, str]]) -> str | None:
     """Generate Liquibase changelog for renaming columns."""
@@ -636,27 +742,31 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
     table_name = get_table_name(entity_name)
     change_sets = []
     for change in changes:
-        field_name = change["name"].upper()
+        # For relation nullable changes, the column name is in change["column_name"]
+        # (e.g. "TEAM_ID") and the field name for change_id is change["field_name"]
+        is_relation = change.get("is_relation", False)
+        field_name_lower = change["field_name"].lower() if is_relation else change["name"].lower()
+        column_name = change["column_name"] if is_relation else change["name"].upper()
         change_type = change["change"]
 
         if change_type == "type":
             sql_type = map_type_to_sql(change["new"])
-            change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-type"
+            change_id = f"{entity_name.lower()}-modify-{field_name_lower}-type"
             change_sets.append(
                 f"""    <changeSet id="{change_id}" author="{project_name}">
-        <modifyDataType tableName="{table_name}" columnName="{change['name']}" newDataType="{sql_type}"/>
+        <modifyDataType tableName="{table_name}" columnName="{column_name}" newDataType="{sql_type}"/>
     </changeSet>"""
             )
         elif change_type == "nullable":
-            change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-nullable"
+            change_id = f"{entity_name.lower()}-modify-{field_name_lower}-nullable"
             if change["new"]:
                 # Field became mandatory → add NOT NULL constraint
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
         <addNotNullConstraint
             tableName="{table_name}"
-            columnName="{change['name']}"
-            constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
+            columnName="{column_name}"
+            constraintName="{table_name}_{column_name}_NOT_NULL"
         />
     </changeSet>"""
                 )
@@ -666,19 +776,19 @@ def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]])
                     f"""    <changeSet id="{change_id}" author="{project_name}">
         <dropNotNullConstraint
             tableName="{table_name}"
-            columnName="{change['name']}"
-            constraintName="{table_name}_{change['name'].upper()}_NOT_NULL"
+            columnName="{column_name}"
+            constraintName="{table_name}_{column_name}_NOT_NULL"
         />
     </changeSet>"""
                 )
         elif change_type == "unique":
-            change_id = f"{entity_name.lower()}-modify-{change['name'].lower()}-unique"
-            index_name = f"IDX_{table_name}_UNQ_{change['name'].upper()}"
+            change_id = f"{entity_name.lower()}-modify-{field_name_lower}-unique"
+            index_name = f"IDX_{table_name}_UNQ_{column_name}"
             if change["new"]:
                 change_sets.append(
                     f"""    <changeSet id="{change_id}" author="{project_name}">
         <createIndex tableName="{table_name}" indexName="{index_name}" unique="true">
-            <column name="{change['name'].upper()}"/>
+            <column name="{column_name}"/>
         </createIndex>
     </changeSet>"""
                 )
@@ -1066,24 +1176,53 @@ def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[d
 
         if change_type == "nullable":
             new_mandatory = change["new"]
+            is_relation = change.get("is_relation", False)
 
-            if new_mandatory:
-                # Make mandatory: add @NotNull and nullable = false
-                old_col = f'@Column(name = "{field_upper}")'
-                new_col = f'@NotNull\n    @Column(name = "{field_upper}", nullable = false)'
-                if old_col in content and f'@Column(name = "{field_upper}", nullable = false)' not in content:
-                    content = content.replace(old_col, new_col)
+            if is_relation:
+                # Relation field: work with @JoinColumn + @NotNull (no @Column)
+                col_name = change["column_name"]
+                if new_mandatory:
+                    # Make mandatory: add nullable = false to @JoinColumn + add @NotNull
+                    if f'@JoinColumn(name = "{col_name}", nullable = false)' not in content:
+                        content = re.sub(
+                            r'(    @JoinColumn\(name\s*=\s*"' + col_name + r'"\))(\s*\n)(    @(?:ManyToOne|OneToOne))',
+                            r'\1, nullable = false\2    @NotNull\n\3',
+                            content,
+                            count=1,
+                        )
+                    # Ensure @NotNull import exists
+                    if "import jakarta.validation.constraints.NotNull;" not in content:
+                        content = _add_import_after(content, "jakarta.validation.constraints.NotNull")
+                else:
+                    # Make non-mandatory: remove nullable = false + @NotNull after @JoinColumn
+                    old_join = f'@JoinColumn(name = "{col_name}", nullable = false)\n    @NotNull\n'
+                    new_join = f'@JoinColumn(name = "{col_name}")\n'
+                    content = content.replace(old_join, new_join)
+                    # Remove @NotNull import if no more @NotNull annotations
+                    if "@NotNull" not in content:
+                        content = re.sub(
+                            r'\nimport jakarta\.validation\.constraints\.NotNull;',
+                            '',
+                            content,
+                        )
             else:
-                # Make non-mandatory: remove @NotNull and nullable = false
-                # First, remove nullable = false from @Column
-                old_col = f'@Column(name = "{field_upper}", nullable = false)'
-                new_col = f'@Column(name = "{field_upper}")'
-                content = content.replace(old_col, new_col)
+                if new_mandatory:
+                    # Make mandatory: add @NotNull and nullable = false
+                    old_col = f'@Column(name = "{field_upper}")'
+                    new_col = f'@NotNull\n    @Column(name = "{field_upper}", nullable = false)'
+                    if old_col in content and f'@Column(name = "{field_upper}", nullable = false)' not in content:
+                        content = content.replace(old_col, new_col)
+                else:
+                    # Make non-mandatory: remove @NotNull and nullable = false
+                    # First, remove nullable = false from @Column
+                    old_col = f'@Column(name = "{field_upper}", nullable = false)'
+                    new_col = f'@Column(name = "{field_upper}")'
+                    content = content.replace(old_col, new_col)
 
-                # Then, remove @NotNull line in the annotation block before the field
-                # Regex: @NotNull followed by any annotation lines, then @Column for this field
-                pattern = rf'(    @NotNull\n)((?:    @\w+.*\n)*)(    @Column\(name = "{field_upper}"\))'
-                content = re.sub(pattern, r'\2\3', content)
+                    # Then, remove @NotNull line in the annotation block before the field
+                    # Regex: @NotNull followed by any annotation lines, then @Column for this field
+                    pattern = rf'(    @NotNull\n)((?:    @\w+.*\n)*)(    @Column\(name = "{field_upper}"\))'
+                    content = re.sub(pattern, r'\2\3', content)
 
         elif change_type == "type":
             old_type = change["old"]
@@ -1150,6 +1289,7 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     # won't work because the new field will already be in the Java file.
     added_fields, dropped_from_csv, renamed_fields = detect_changed_fields(entity_name)
     metadata_changes = detect_field_metadata_changes(entity_name)
+    metadata_changes.extend(detect_relation_metadata_changes(entity_name))
     
     # Build sets of renamed field names for exclusion
     renamed_old_names = {old for old, _ in renamed_fields}
