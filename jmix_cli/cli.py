@@ -849,10 +849,11 @@ def main() -> None:
             for ent in ordered_list:
                 logger.info(f"   📺 Compiling Layout XML and Java Views for: {ent}")
                 if ent == "User":
+                    fields_list = get_entities_from_csv("entities.csv", "User")
                     relations_list = get_relations_from_csv("relations.csv", "User")
-                    if relations_list:
-                        inject_list_ui_into_existing_user(relations_list)
-                        inject_detail_ui_into_existing_user(relations_list)
+                    if fields_list or relations_list:
+                        inject_list_ui_into_existing_user(relations_list, fields_list)
+                        inject_detail_ui_into_existing_user(relations_list, fields_list)
                 else:
                     current_fields = get_entities_from_csv("entities.csv", ent)
                     relations_list = get_relations_from_csv("relations.csv", ent)
