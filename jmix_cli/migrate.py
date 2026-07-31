@@ -1184,12 +1184,12 @@ def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[d
                 if new_mandatory:
                     # Make mandatory: add nullable = false to @JoinColumn + add @NotNull
                     if f'@JoinColumn(name = "{col_name}", nullable = false)' not in content:
-                        content = re.sub(
-                            r'(    @JoinColumn\(name\s*=\s*"' + col_name + r'")(\s*\n)(    @(?:ManyToOne|OneToOne))',
-                            r'\1, nullable = false)\2    @NotNull\n\3',
-                            content,
-                            count=1,
-                        )
+                        for ann in ("ManyToOne", "OneToOne"):
+                            old = f'@JoinColumn(name = "{col_name}")\n    @{ann}'
+                            new = f'@JoinColumn(name = "{col_name}", nullable = false)\n    @NotNull\n    @{ann}'
+                            if old in content:
+                                content = content.replace(old, new, 1)
+                                break
                     # Ensure @NotNull import exists
                     if "import jakarta.validation.constraints.NotNull;" not in content:
                         content = _add_import_after(content, "jakarta.validation.constraints.NotNull")
