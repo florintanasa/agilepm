@@ -1466,6 +1466,23 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     
     # Generate metadata changes changelog
     if metadata_changes:
+        # Warn about potential NULL data issues for relation nullable → NOT NULL
+        for change in metadata_changes:
+            if (
+                change.get("is_relation", False)
+                and change["change"] == "nullable"
+                and change.get("new") is True
+            ):
+                col = change["column_name"]
+                tbl = table_name
+                logger.warning(
+                    f"⚠️  {entity_name}.{change['field_name']} → {tbl}.{col} "
+                    f"is becoming NOT NULL. If existing DB rows have NULL in "
+                    f"{col}, the Liquibase 'addNotNullConstraint' will fail. "
+                    f"Either: (1) rm -rf .jmix/hsqldb/ then restart app, "
+                    f"or (2) manually UPDATE {tbl} SET {col} = '<valid UUID>' "
+                    f"WHERE {col} IS NULL before restarting."
+                )
         changes_content = gen_modify_column_changelog(entity_name, metadata_changes)
         if changes_content:
             target_dir = (
