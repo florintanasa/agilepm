@@ -553,31 +553,58 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
             prop_content += locales_line
         app_properties_path.write_text(prop_content, encoding="utf-8")
 
-    if lang_key_for_map != "en":
+    if lang_key_for_map != "en" or True:
         msg_dir = target_dir / "src" / "main" / "resources" / new_package_slashes
         msg_dir.mkdir(parents=True, exist_ok=True)
-        template_eng_msg_path = msg_dir / "messages_en.properties"
+        templates_dir = Path(".templates")
         base_fallback_msg_path = msg_dir / "messages.properties"
         custom_messages_path = msg_dir / f"messages_{lang_suffix}.properties"
-        if template_eng_msg_path.exists() and not base_fallback_msg_path.exists():
-            shutil.copy2(template_eng_msg_path, base_fallback_msg_path)
-            logger.info("[+] Generated standard base fallback file: messages.properties")
-        if not custom_messages_path.exists():
-            if template_eng_msg_path.exists():
-                shutil.copy2(template_eng_msg_path, custom_messages_path)
-                content = custom_messages_path.read_text(encoding="utf-8")
-                custom_messages_path.write_text(
-                    f"# Automatically initialized as a bilingual twin for: {lang_suffix}\n"
-                    + content,
+        eng_template_path = templates_dir / "messages_en.properties"
+        lang_template_path = templates_dir / f"messages_{lang_suffix}.properties"
+
+        # Always ensure messages.properties exists from English template
+        if eng_template_path.exists():
+            if not base_fallback_msg_path.exists():
+                shutil.copy2(eng_template_path, base_fallback_msg_path)
+                logger.info("[+] Generated standard base fallback file: messages.properties")
+        else:
+            if not base_fallback_msg_path.exists():
+                base_fallback_msg_path.write_text(
+                    f"# Base fallback localization bundle\n",
                     encoding="utf-8",
                 )
-                logger.info(f"[+] Created localized bundle twin with English base: messages_{lang_suffix}.properties")
+                logger.info("[+] Initialized empty base fallback file: messages.properties")
+
+        # Determine source for localized bundle
+        if lang_template_path.exists():
+            src_template = lang_template_path
+        else:
+            template_suffix = JMIX_TRANSLATIONS_MAP.get(lang_key_for_map, lang_key_for_map)
+            if template_suffix != lang_key_for_map:
+                alt_template_path = templates_dir / f"messages_{template_suffix}.properties"
+                if alt_template_path.exists():
+                    src_template = alt_template_path
+                elif eng_template_path.exists():
+                    src_template = eng_template_path
+                else:
+                    src_template = None
+            elif eng_template_path.exists():
+                src_template = eng_template_path
             else:
-                custom_messages_path.write_text(
-                    f"# Custom localization translations properties file for: {lang_suffix}\n",
-                    encoding="utf-8",
-                )
-                logger.info(f"[+] Initialized empty bundle (messages_en.properties was missing): messages_{lang_suffix}.properties")
+                src_template = None
+
+        if src_template and not custom_messages_path.exists():
+            shutil.copy2(src_template, custom_messages_path)
+            if lang_template_path.exists():
+                logger.info(f"[+] Copied localized bundle from template: messages_{lang_suffix}.properties")
+            else:
+                logger.info(f"[+] Initialized localized bundle from English template: messages_{lang_suffix}.properties")
+        elif not custom_messages_path.exists():
+            custom_messages_path.write_text(
+                f"# Custom localization translations properties file for: {lang_suffix}\n",
+                encoding="utf-8",
+            )
+            logger.info(f"[+] Initialized empty bundle: messages_{lang_suffix}.properties")
 
     files_to_update = [target_dir / "settings.gradle", app_properties_path]
     for base_root, _, new_rel in paths_to_move:
