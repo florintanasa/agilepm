@@ -109,6 +109,29 @@ def write_file(path: str | Path, content: str) -> None:
         f.write(content)
 
 
+def replace_entity_messages(file_path: str, base_package: str, entity_name: str, new_lines: list[str]) -> None:
+    p = Path(file_path)
+    existing_lines = []
+    if p.exists():
+        existing_lines = p.read_text(encoding="utf-8").splitlines()
+
+    prefix = f"{base_package}.entity/{entity_name}"
+    filtered = [line for line in existing_lines if not line.startswith(prefix + ".") and line.strip()]
+
+    if not filtered or not filtered[-1].strip():
+        pass
+    else:
+        if filtered[-1].strip():
+            filtered.append("")
+
+    for line in new_lines:
+        if line not in filtered:
+            filtered.append(line)
+
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(filtered) + "\n", encoding="utf-8")
+
+
 def append_unique(file_path: str, lines_to_add: list[str]) -> None:
     existing_content = ""
     if os.path.exists(file_path):

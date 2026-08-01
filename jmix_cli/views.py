@@ -33,7 +33,6 @@ from jmix_cli.utils import get_logger
 from jmix_cli.utils import (
     COMPANY,
     PROIECT_PATH,
-    append_unique,
     company_path,
     project_name,
     write_file,

@@ -1411,6 +1411,14 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     # This is critical: if we inject new fields first, rename detection
     # won't work because the new field will already be in the Java file.
     added_fields, dropped_from_csv, renamed_fields = detect_changed_fields(entity_name)
+    
+    # Update messages for relation fields (including renames)
+    if mode != "dry-run" and mode != "quiet":
+        relations_list = get_relations_from_csv("relations.csv", entity_name)
+        relation_field_names = [rel["field"] for rel in relations_list]
+        all_field_names = list(set(added_fields + [new_name for _, new_name in renamed_fields] + relation_field_names))
+        update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, all_field_names, relations_list)
+    
     metadata_changes = detect_field_metadata_changes(entity_name)
     metadata_changes.extend(detect_relation_metadata_changes(entity_name))
     
@@ -1485,6 +1493,12 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
                 )
                 entity_path.write_text(java_content, encoding="utf-8")
                 logger.info(f"✅ Renamed field in Java: {old_name} -> {new_name}")
+        
+        # Update messages for renamed fields
+        if mode != "dry-run" and mode != "quiet":
+            relations_list = get_relations_from_csv("relations.csv", entity_name)
+            new_field_names = [new_name for _, new_name in renamed_fields]
+            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, relations_list)
     
     # Inject new fields (excluding renamed ones)
     if missing_fields:
@@ -1495,7 +1509,8 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         # Update messages for new fields
         if mode != "dry-run" and mode != "quiet":
             new_field_names = [f["name"] for f in missing_fields]
-            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
+            relations_list = get_relations_from_csv("relations.csv", entity_name)
+            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, relations_list)
     
     # Also inject fields that are in CSV + changelog but missing from Java
     # (e.g., field was added, dropped, and re-added to CSV)
@@ -1514,7 +1529,8 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         
         if mode != "dry-run" and mode != "quiet":
             new_field_names = [f["name"] for f in re_added_fields]
-            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
+            relations_list = get_relations_from_csv("relations.csv", entity_name)
+            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, relations_list)
     
     # Detect dropped columns from DB
     dropped_columns = detect_dropped_columns(entity_name, db_adapter)
