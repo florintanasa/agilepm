@@ -1105,6 +1105,20 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
         if f"private {f_type} {f_name};" in content:
             continue
         
+        # Add import for field type if needed
+        type_import_map = {
+            "BigDecimal": "import java.math.BigDecimal;",
+            "LocalDate": "import java.time.LocalDate;",
+            "LocalDateTime": "import java.time.LocalDateTime;",
+            "OffsetDateTime": "import java.time.OffsetDateTime;",
+        }
+        type_import = type_import_map.get(f_type)
+        if type_import and type_import not in content:
+            content = content.replace(
+                "import java.util.UUID;",
+                f"import java.util.UUID;\n{type_import}",
+            )
+        
         # Add field
         validation_anno = ""
         if field["mandatory"]:
