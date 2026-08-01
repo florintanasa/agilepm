@@ -302,8 +302,11 @@ def update_messages_entity(
                         f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}={translate_label_composition}"
                     )
 
-        entity_lines = [line for line in target_lines if line.startswith(f"{base_package}.entity/{n}.")]
-        other_lines = [line for line in target_lines if not line.startswith(f"{base_package}.entity/{n}.")]
+        entity_lines = [
+            line for line in target_lines
+            if line.startswith(f"{base_package}.entity/{n}.") or line.startswith(f"{base_package}.entity/{n}=")
+        ]
+        other_lines = [line for line in target_lines if not line.startswith(f"{base_package}.entity/{n}.") and not line.startswith(f"{base_package}.entity/{n}=")]
         
         replace_entity_messages(str(target_path), base_package, n, entity_lines)
         if other_lines:
