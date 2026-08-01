@@ -244,13 +244,14 @@ def _generate_single_entity(name: str) -> None:
         if relations_list:
             gen_liquibase_relations_changelog("User", relations_list)
             inject_relations_into_existing_user(name, relations_list)
-            update_messages_entity(
-                project_dir=".",
-                base_package=COMPANY + "." + project_name,
-                entity_name="User",
-                traits_list=[],
-                relations_list=relations_list,
-            )
+            relation_lines = []
+            for rel in relations_list:
+                f_name = rel["field"]
+                relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={f_name.capitalize()}")
+            from jmix_cli.utils import append_unique
+            resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+            for messages_file in ["messages.properties", "messages_en.properties", "messages_ro.properties"]:
+                append_unique(str(resources_path / messages_file), relation_lines)
         else:
             logger.info("   -> No relationships were configured for the User in relations.csv.")
     else:
@@ -753,13 +754,14 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
-                        update_messages_entity(
-                            project_dir=".",
-                            base_package=COMPANY + "." + project_name,
-                            entity_name="User",
-                            traits_list=[],
-                            relations_list=relations_list,
-                        )
+                        relation_lines = [
+                            f"{COMPANY}.{project_name}.entity/User.{rel['field']}={rel['field'].capitalize()}"
+                            for rel in relations_list
+                        ]
+                        from jmix_cli.utils import append_unique
+                        resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+                        for messages_file in ["messages.properties", "messages_en.properties", "messages_ro.properties"]:
+                            append_unique(str(resources_path / messages_file), relation_lines)
                 else:
                     traits = get_traits_from_csv("traits.csv", ent)
                     fields_list = get_entities_from_csv("entities.csv", ent)
@@ -840,7 +842,14 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
-                        update_messages_entity(".", COMPANY + "." + project_name, "User", [], relations_list)
+                        relation_lines = [
+                            f"{COMPANY}.{project_name}.entity/User.{rel['field']}={rel['field'].capitalize()}"
+                            for rel in relations_list
+                        ]
+                        from jmix_cli.utils import append_unique
+                        resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+                        for messages_file in ["messages.properties", "messages_en.properties", "messages_ro.properties"]:
+                            append_unique(str(resources_path / messages_file), relation_lines)
                 else:
                     logger.info(f"   ▶️ Building Domain Model: {ent}")
                     traits = get_traits_from_csv("traits.csv", ent)
