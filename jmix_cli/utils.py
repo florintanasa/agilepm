@@ -116,20 +116,40 @@ def replace_entity_messages(file_path: str, base_package: str, entity_name: str,
         existing_lines = p.read_text(encoding="utf-8").splitlines()
 
     prefix = f"{base_package}.entity/{entity_name}"
-    filtered = [line for line in existing_lines if not line.startswith(prefix + ".") and line.strip()]
-
-    if not filtered or not filtered[-1].strip():
-        pass
-    else:
-        if filtered[-1].strip():
-            filtered.append("")
-
+    new_keys = {}
     for line in new_lines:
-        if line not in filtered:
-            filtered.append(line)
+        if "=" in line:
+            key = line.split("=")[0].strip()
+            new_keys[key] = line
+
+    result = []
+    seen_keys = set()
+    first_entity_idx = None
+    last_entity_idx = None
+    for i, line in enumerate(existing_lines):
+        if line.startswith(prefix + "."):
+            key = line.split("=")[0].strip()
+            if first_entity_idx is None:
+                first_entity_idx = i
+            last_entity_idx = len(result)
+            if key in new_keys:
+                result.append(new_keys[key])
+                seen_keys.add(key)
+            else:
+                continue
+        else:
+            result.append(line)
+
+    for key, line in new_keys.items():
+        if key not in seen_keys:
+            if last_entity_idx is not None:
+                result.insert(last_entity_idx + 1, line)
+                last_entity_idx += 1
+            else:
+                result.append(line)
 
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("\n".join(filtered) + "\n", encoding="utf-8")
+    p.write_text("\n".join(result) + "\n", encoding="utf-8")
 
 
 def append_unique(file_path: str, lines_to_add: list[str]) -> None:

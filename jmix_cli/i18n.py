@@ -33,7 +33,7 @@ from typing import Any
 
 from jmix_cli.utils import get_logger
 from jmix_cli.exceptions import ConfigurationError, GenerationError
-from jmix_cli.utils import COMPANY, PROIECT_PATH, company_path, project_name, replace_entity_messages, validate_csv_path
+from jmix_cli.utils import COMPANY, PROIECT_PATH, append_unique, company_path, project_name, replace_entity_messages, validate_csv_path
 
 logger = get_logger("jmix_cli.i18n")
 
@@ -302,9 +302,16 @@ def update_messages_entity(
                         f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}={translate_label_composition}"
                     )
 
-        replace_entity_messages(str(target_path), base_package, n, target_lines)
+        entity_lines = [line for line in target_lines if line.startswith(f"{base_package}.entity/{n}.")]
+        other_lines = [line for line in target_lines if not line.startswith(f"{base_package}.entity/{n}.")]
+        
+        replace_entity_messages(str(target_path), base_package, n, entity_lines)
+        if other_lines:
+            append_unique(str(target_path), other_lines)
         if locale == "en":
-            replace_entity_messages(str(base_path / "messages.properties"), base_package, n, target_lines)
+            replace_entity_messages(str(base_path / "messages.properties"), base_package, n, entity_lines)
+            if other_lines:
+                append_unique(str(base_path / "messages.properties"), other_lines)
 
     logger.info(
         f"✨ Parametric localization layout for entity '{n}' successfully compiled across available locales!"
