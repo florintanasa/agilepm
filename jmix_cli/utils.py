@@ -127,14 +127,14 @@ def replace_entity_messages(file_path: str, base_package: str, entity_name: str,
     first_entity_idx = None
     last_entity_idx = None
     for i, line in enumerate(existing_lines):
-        if line.startswith(prefix + "."):
+        if line.startswith(prefix + ".") or line.startswith(prefix + "="):
             key = line.split("=")[0].strip()
             if first_entity_idx is None:
                 first_entity_idx = i
-            last_entity_idx = len(result)
             if key in new_keys:
                 result.append(new_keys[key])
                 seen_keys.add(key)
+                last_entity_idx = len(result) - 1
             else:
                 continue
         else:
