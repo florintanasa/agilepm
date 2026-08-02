@@ -38,7 +38,7 @@ from pathlib import Path
 
 from jmix_cli.exceptions import JmixCliError, ConfigurationError, GenerationError, UserInputError
 from jmix_cli.utils import get_logger
-from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, validate_csv_path
+from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, update_checkbox_required_state_property, validate_csv_path
 from jmix_cli.entity import (
     _inject_composition_into_parent,
     get_entities_from_csv,
@@ -244,13 +244,50 @@ def _generate_single_entity(name: str) -> None:
         if relations_list:
             gen_liquibase_relations_changelog("User", relations_list)
             inject_relations_into_existing_user(name, relations_list)
-            update_messages_entity(
-                project_dir=".",
-                base_package=COMPANY + "." + project_name,
-                entity_name="User",
-                traits_list=[],
-                relations_list=relations_list,
-            )
+            from jmix_cli.utils import replace_entity_messages
+            from jmix_cli.i18n import ask_ollama_translation
+            resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+            messages_files = list(resources_path.glob("messages*.properties"))
+            iso_lang_names = {
+                "ar": "Arabic",
+                "ckb": "Central Kurdish",
+                "de": "German",
+                "el": "Greek",
+                "es": "Spanish",
+                "fr": "French",
+                "it": "Italian",
+                "nl": "Dutch",
+                "pt": "Brazilian Portuguese",
+                "ro": "Romanian",
+                "ru": "Russian",
+                "tr": "Turkish",
+                "zh": "Simplified Chinese",
+            }
+            for messages_file in messages_files:
+                stem = messages_file.stem
+                lang_code = "en" if stem == "messages" else stem.split("_", 1)[1] if "_" in stem else stem
+                primary_iso = lang_code.split("_")[0].lower()
+                lang_name = iso_lang_names.get(primary_iso, primary_iso)
+                relation_lines = []
+                for rel in relations_list:
+                    f_name = rel["field"]
+                    spaced_name = (
+                        "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
+                    )
+                    readable_en = spaced_name.capitalize()
+                    if lang_code == "en":
+                        label = readable_en
+                    else:
+                        label = ask_ollama_translation(readable_en, lang_name)
+                        if not label or len(label) > 50:
+                            label = readable_en
+                    relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={label}")
+                existing_lines = messages_file.read_text(encoding="utf-8").splitlines() if messages_file.exists() else []
+                user_lines = [line for line in existing_lines if line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                non_user_lines = [line for line in existing_lines if not line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
+                new_content = "\n".join(non_user_lines[:len(non_user_lines) - len(user_lines)] + combined_user_lines) + "\n"
+                messages_file.write_text(new_content, encoding="utf-8")
         else:
             logger.info("   -> No relationships were configured for the User in relations.csv.")
     else:
@@ -553,31 +590,58 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
             prop_content += locales_line
         app_properties_path.write_text(prop_content, encoding="utf-8")
 
-    if lang_key_for_map != "en":
+    if lang_key_for_map != "en" or True:
         msg_dir = target_dir / "src" / "main" / "resources" / new_package_slashes
         msg_dir.mkdir(parents=True, exist_ok=True)
-        template_eng_msg_path = msg_dir / "messages_en.properties"
+        templates_dir = Path(".templates")
         base_fallback_msg_path = msg_dir / "messages.properties"
         custom_messages_path = msg_dir / f"messages_{lang_suffix}.properties"
-        if template_eng_msg_path.exists() and not base_fallback_msg_path.exists():
-            shutil.copy2(template_eng_msg_path, base_fallback_msg_path)
-            logger.info("[+] Generated standard base fallback file: messages.properties")
-        if not custom_messages_path.exists():
-            if template_eng_msg_path.exists():
-                shutil.copy2(template_eng_msg_path, custom_messages_path)
-                content = custom_messages_path.read_text(encoding="utf-8")
-                custom_messages_path.write_text(
-                    f"# Automatically initialized as a bilingual twin for: {lang_suffix}\n"
-                    + content,
+        eng_template_path = templates_dir / "messages_en.properties"
+        lang_template_path = templates_dir / f"messages_{lang_suffix}.properties"
+
+        # Always ensure messages.properties exists from English template
+        if eng_template_path.exists():
+            if not base_fallback_msg_path.exists():
+                shutil.copy2(eng_template_path, base_fallback_msg_path)
+                logger.info("[+] Generated standard base fallback file: messages.properties")
+        else:
+            if not base_fallback_msg_path.exists():
+                base_fallback_msg_path.write_text(
+                    f"# Base fallback localization bundle\n",
                     encoding="utf-8",
                 )
-                logger.info(f"[+] Created localized bundle twin with English base: messages_{lang_suffix}.properties")
+                logger.info("[+] Initialized empty base fallback file: messages.properties")
+
+        # Determine source for localized bundle
+        if lang_template_path.exists():
+            src_template = lang_template_path
+        else:
+            template_suffix = JMIX_TRANSLATIONS_MAP.get(lang_key_for_map, lang_key_for_map)
+            if template_suffix != lang_key_for_map:
+                alt_template_path = templates_dir / f"messages_{template_suffix}.properties"
+                if alt_template_path.exists():
+                    src_template = alt_template_path
+                elif eng_template_path.exists():
+                    src_template = eng_template_path
+                else:
+                    src_template = None
+            elif eng_template_path.exists():
+                src_template = eng_template_path
             else:
-                custom_messages_path.write_text(
-                    f"# Custom localization translations properties file for: {lang_suffix}\n",
-                    encoding="utf-8",
-                )
-                logger.info(f"[+] Initialized empty bundle (messages_en.properties was missing): messages_{lang_suffix}.properties")
+                src_template = None
+
+        if src_template and not custom_messages_path.exists():
+            shutil.copy2(src_template, custom_messages_path)
+            if lang_template_path.exists():
+                logger.info(f"[+] Copied localized bundle from template: messages_{lang_suffix}.properties")
+            else:
+                logger.info(f"[+] Initialized localized bundle from English template: messages_{lang_suffix}.properties")
+        elif not custom_messages_path.exists():
+            custom_messages_path.write_text(
+                f"# Custom localization translations properties file for: {lang_suffix}\n",
+                encoding="utf-8",
+            )
+            logger.info(f"[+] Initialized empty bundle: messages_{lang_suffix}.properties")
 
     files_to_update = [target_dir / "settings.gradle", app_properties_path]
     for base_root, _, new_rel in paths_to_move:
@@ -726,13 +790,50 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
-                        update_messages_entity(
-                            project_dir=".",
-                            base_package=COMPANY + "." + project_name,
-                            entity_name="User",
-                            traits_list=[],
-                            relations_list=relations_list,
-                        )
+                        from jmix_cli.utils import replace_entity_messages
+                        from jmix_cli.i18n import ask_ollama_translation
+                        resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+                        messages_files = list(resources_path.glob("messages*.properties"))
+                        iso_lang_names = {
+                            "ar": "Arabic",
+                            "ckb": "Central Kurdish",
+                            "de": "German",
+                            "el": "Greek",
+                            "es": "Spanish",
+                            "fr": "French",
+                            "it": "Italian",
+                            "nl": "Dutch",
+                            "pt": "Brazilian Portuguese",
+                            "ro": "Romanian",
+                            "ru": "Russian",
+                            "tr": "Turkish",
+                            "zh": "Simplified Chinese",
+                        }
+                        for messages_file in messages_files:
+                            stem = messages_file.stem
+                            lang_code = "en" if stem == "messages" else stem.split("_", 1)[1] if "_" in stem else stem
+                            primary_iso = lang_code.split("_")[0].lower()
+                            lang_name = iso_lang_names.get(primary_iso, primary_iso)
+                            relation_lines = []
+                            for rel in relations_list:
+                                f_name = rel["field"]
+                                spaced_name = (
+                                    "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
+                                )
+                                readable_en = spaced_name.capitalize()
+                                if lang_code == "en":
+                                    label = readable_en
+                                else:
+                                    label = ask_ollama_translation(readable_en, lang_name)
+                                    if not label or len(label) > 50:
+                                        label = readable_en
+                                relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={label}")
+                            existing_lines = messages_file.read_text(encoding="utf-8").splitlines() if messages_file.exists() else []
+                            user_lines = [line for line in existing_lines if line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                            non_user_lines = [line for line in existing_lines if not line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                            combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
+                            new_content = "\n".join(non_user_lines + combined_user_lines) + "\n"
+                            messages_file.write_text(new_content, encoding="utf-8")
                 else:
                     traits = get_traits_from_csv("traits.csv", ent)
                     fields_list = get_entities_from_csv("entities.csv", ent)
@@ -755,6 +856,7 @@ def main() -> None:
                 if composition_rels:
                     _inject_composition_into_parent(ent, composition_rels)
             _finalize_composition_relationships()
+            update_checkbox_required_state_property()
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
 
@@ -813,7 +915,50 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
-                        update_messages_entity(".", COMPANY + "." + project_name, "User", [], relations_list)
+                        from jmix_cli.utils import replace_entity_messages
+                        from jmix_cli.i18n import ask_ollama_translation
+                        resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+                        messages_files = list(resources_path.glob("messages*.properties"))
+                        iso_lang_names = {
+                            "ar": "Arabic",
+                            "ckb": "Central Kurdish",
+                            "de": "German",
+                            "el": "Greek",
+                            "es": "Spanish",
+                            "fr": "French",
+                            "it": "Italian",
+                            "nl": "Dutch",
+                            "pt": "Brazilian Portuguese",
+                            "ro": "Romanian",
+                            "ru": "Russian",
+                            "tr": "Turkish",
+                            "zh": "Simplified Chinese",
+                        }
+                        for messages_file in messages_files:
+                            stem = messages_file.stem
+                            lang_code = "en" if stem == "messages" else stem.split("_", 1)[1] if "_" in stem else stem
+                            primary_iso = lang_code.split("_")[0].lower()
+                            lang_name = iso_lang_names.get(primary_iso, primary_iso)
+                            relation_lines = []
+                            for rel in relations_list:
+                                f_name = rel["field"]
+                                spaced_name = (
+                                    "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
+                                )
+                                readable_en = spaced_name.capitalize()
+                                if lang_code == "en":
+                                    label = readable_en
+                                else:
+                                    label = ask_ollama_translation(readable_en, lang_name)
+                                    if not label or len(label) > 50:
+                                        label = readable_en
+                                relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={label}")
+                            existing_lines = messages_file.read_text(encoding="utf-8").splitlines() if messages_file.exists() else []
+                            user_lines = [line for line in existing_lines if line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                            non_user_lines = [line for line in existing_lines if not line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                            combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
+                            new_content = "\n".join(non_user_lines + combined_user_lines) + "\n"
+                            messages_file.write_text(new_content, encoding="utf-8")
                 else:
                     logger.info(f"   ▶️ Building Domain Model: {ent}")
                     traits = get_traits_from_csv("traits.csv", ent)
@@ -877,6 +1022,7 @@ def main() -> None:
             logger.info("=" * 70)
             logger.info("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
             logger.info("=" * 70 + "\n")
+            update_checkbox_required_state_property()
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
 
@@ -884,6 +1030,7 @@ def main() -> None:
             logger.info("[*] Running incremental DB migrations for all entities...")
             mode = "force" if "--force" in sys.argv else "prompt"
             migrate_all_entities(mode)
+            update_checkbox_required_state_property()
             return
 
         if len(sys.argv) == 2:

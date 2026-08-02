@@ -351,6 +351,10 @@ def _get_relation_column_names(entity_name: str) -> set[str]:
 
     When the entity is the *target* of a COMPOSITION_1:1, the FK column is on
     the *source* entity's table, so nothing is added for the target.
+
+    Also reads existing @JoinColumn column names from the Java entity file,
+    so that relation field renames (e.g. priority → mumu) don't cause the old
+    FK column (PRIORITY_ID) to be falsely detected as dropped.
     """
     from jmix_cli.entity import get_relations_from_csv
     relations = get_relations_from_csv("relations.csv", entity_name)
@@ -360,6 +364,17 @@ def _get_relation_column_names(entity_name: str) -> set[str]:
         field = rel["field"].upper()
         if rel_type in ("N:1", "1:1", "COMPOSITION_1:1"):
             column_names.add(f"{field}_ID")
+
+    # Also scan existing Java entity for @JoinColumn column names
+    # to catch relation field renames (old column names that still exist in DB)
+    entity_path = (
+        PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
+    )
+    if entity_path.exists():
+        content = entity_path.read_text(encoding="utf-8")
+        for match in re.finditer(r'@JoinColumn\(name\s*=\s*"([^"]+)"', content):
+            column_names.add(match.group(1).upper())
+
     return column_names
 
 
@@ -604,6 +619,7 @@ def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
                     "change": "nullable",
                     "old": java_field["mandatory"],
                     "new": csv_field["mandatory"],
+                    "field_type": csv_field["type"],
                 }
             )
         if csv_field["unique"] != java_field["unique"]:
@@ -657,7 +673,21 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
         if rel_type not in ("N:1", "1:1"):
             continue
         f_name = rel["field"]
-        col_name = f"{f_name.upper()}_ID"
+        csv_col_name = f"{f_name.upper()}_ID"
+
+        # Read the actual @JoinColumn column name from Java to handle renames
+        # (e.g., field renamed from 'priority' to 'mumu' but DB column stays PRIORITY_ID)
+        field_pattern = (
+            r'(@JoinColumn\(name\s*=\s*"(\w+_ID)"[^)]*\)\s*\n'
+            r'(?:    @NotNull\n)?\s*'
+            r'@(?:ManyToOne|OneToOne)\(fetch = FetchType\.LAZY\)\s*\n    )'
+            f'private {rel["target"]} {f_name};'
+        )
+        join_match = re.search(field_pattern, content)
+        if join_match:
+            col_name = join_match.group(2)
+        else:
+            col_name = csv_col_name
 
         # Check if @NotNull is present in the annotation block for this FK column.
         # Generated code has @JoinColumn first, then @NotNull, then @ManyToOne/@OneToOne.
@@ -703,6 +733,95 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
 
     return changes
 
+
+def _apply_relation_field_renames(entity_name: str) -> list[str]:
+    """Rename relation fields in Java if the field name in relations.csv
+    doesn't match the Java field name.
+
+    For N:1 and 1:1 relations, when the field_name in relations.csv changes
+    (e.g., from 'priority' to 'mumu'), this function updates the Java entity
+    field name, getter, and setter accordingly. The DB column name (e.g.,
+    PRIORITY_ID) stays the same, so no changelog is needed for the rename.
+
+    Returns list of renamed field names (old -> new) for logging.
+    """
+    from jmix_cli.entity import get_relations_from_csv
+
+    relations = get_relations_from_csv("relations.csv", entity_name)
+    if not relations:
+        return []
+
+    entity_path = (
+        PROIECT_PATH
+        / "src"
+        / "main"
+        / "java"
+        / company_path
+        / project_name
+        / "entity"
+        / f"{entity_name}.java"
+    )
+    if not entity_path.exists():
+        return []
+
+    content = entity_path.read_text(encoding="utf-8")
+    renamed: list[str] = []
+
+    for rel in relations:
+        rel_type = rel["type"].strip().upper()
+        if rel_type not in ("N:1", "1:1"):
+            continue
+        csv_field = rel["field"].strip()
+        tgt_class = rel["target"].strip()
+
+        # Find the existing relation field for this target type
+        # Pattern: @JoinColumn(name = "XXX_ID"...) ... private TargetType fieldName;
+        # The @JoinColumn may have nullable=false, and @NotNull may be present
+        simple_pattern = rf'@JoinColumn\(name\s*=\s*"(\w+_ID)"[^)]*\)\s*\n(?:    @NotNull\n)?\s*@(ManyToOne|OneToOne)\(fetch = FetchType\.LAZY\)\s*\n\s*private {tgt_class} (\w+);'
+        match = re.search(simple_pattern, content)
+        if match and match.group(3) != csv_field:
+            old_field = match.group(3)
+            new_field = csv_field
+            old_caps = old_field[0].upper() + old_field[1:]
+            new_caps = new_field[0].upper() + new_field[1:]
+
+            # Rename field declaration
+            content = content.replace(
+                f"private {tgt_class} {old_field};",
+                f"private {tgt_class} {new_field};",
+                1,
+            )
+            # Rename getter
+            content = content.replace(
+                f"public {tgt_class} get{old_caps}()",
+                f"public {tgt_class} get{new_caps}()",
+                1,
+            )
+            # Rename getter body
+            content = content.replace(
+                f"return {old_field};",
+                f"return {new_field};",
+                1,
+            )
+            # Rename setter
+            content = content.replace(
+                f"public void set{old_caps}({tgt_class} {old_field})",
+                f"public void set{new_caps}({tgt_class} {new_field})",
+                1,
+            )
+            # Rename setter body
+            content = content.replace(
+                f"this.{old_field} = {old_field};",
+                f"this.{new_field} = {new_field};",
+                1,
+            )
+            renamed.append(f"{old_field} -> {new_field}")
+
+    if renamed:
+        entity_path.write_text(content, encoding="utf-8")
+        logger.info(f"✅ Renamed relation fields in {entity_name}.java: {renamed}")
+
+    return renamed
 
 
 def gen_rename_column_changelog(entity_name: str, renames: list[tuple[str, str]]) -> str | None:
@@ -987,6 +1106,20 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
         if f"private {f_type} {f_name};" in content:
             continue
         
+        # Add import for field type if needed
+        type_import_map = {
+            "BigDecimal": "import java.math.BigDecimal;",
+            "LocalDate": "import java.time.LocalDate;",
+            "LocalDateTime": "import java.time.LocalDateTime;",
+            "OffsetDateTime": "import java.time.OffsetDateTime;",
+        }
+        type_import = type_import_map.get(f_type)
+        if type_import and type_import not in content:
+            content = content.replace(
+                "import java.util.UUID;",
+                f"import java.util.UUID;\n{type_import}",
+            )
+        
         # Add field
         validation_anno = ""
         if field["mandatory"]:
@@ -1212,6 +1345,12 @@ def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[d
                     new_col = f'@NotNull\n    @Column(name = "{field_upper}", nullable = false)'
                     if old_col in content and f'@Column(name = "{field_upper}", nullable = false)' not in content:
                         content = content.replace(old_col, new_col)
+                    # For Boolean fields, add default value false when becoming mandatory
+                    if change.get("field_type", "").lower() == "boolean":
+                        old_decl = f"private Boolean {field_name};"
+                        new_decl = f"private Boolean {field_name} = false;"
+                        if old_decl in content and f"private Boolean {field_name} = false;" not in content:
+                            content = content.replace(old_decl, new_decl)
                 else:
                     # Make non-mandatory: remove @NotNull and nullable = false
                     # First, remove nullable = false from @Column
@@ -1223,6 +1362,12 @@ def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[d
                     # Regex: @NotNull followed by any annotation lines, then @Column for this field
                     pattern = rf'(    @NotNull\n)((?:    @\w+.*\n)*)(    @Column\(name = "{field_upper}"\))'
                     content = re.sub(pattern, r'\2\3', content)
+
+                    # For Boolean fields, remove default value false when becoming non-mandatory
+                    if change.get("field_type", "").lower() == "boolean":
+                        old_decl = f"private Boolean {field_name} = false;"
+                        new_decl = f"private Boolean {field_name};"
+                        content = content.replace(old_decl, new_decl)
 
         elif change_type == "type":
             old_type = change["old"]
@@ -1283,11 +1428,33 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     from jmix_cli.i18n import update_messages_entity
     
     db_adapter = HSQLDBAdapter()
+    messages_need_update = False
+    
+    # First, apply any relation field renames from relations.csv to Java
+    # (e.g., priority → mumu). This must happen before field detection
+    # so the Java file reflects the current relations.csv field names.
+    relation_renames = _apply_relation_field_renames(entity_name)
     
     # Detect added, dropped, and renamed fields BEFORE injecting anything.
     # This is critical: if we inject new fields first, rename detection
     # won't work because the new field will already be in the Java file.
     added_fields, dropped_from_csv, renamed_fields = detect_changed_fields(entity_name)
+    
+    if renamed_fields or added_fields or relation_renames:
+        messages_need_update = True
+    
+    # For User entity, exclude standard Jmix User fields from dropped detection
+    # since they are defined in the base template, not in entities.csv
+    if entity_name == "User":
+        user_standard_fields = {
+            "username", "password", "firstname", "lastname",
+            "email", "active", "timezoneid", "userprofile",
+        }
+        dropped_from_csv = [f for f in dropped_from_csv if f.lower() not in user_standard_fields]
+    
+    if dropped_from_csv:
+        messages_need_update = True
+    
     metadata_changes = detect_field_metadata_changes(entity_name)
     metadata_changes.extend(detect_relation_metadata_changes(entity_name))
     
@@ -1368,11 +1535,6 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         if mode != "quiet":
             logger.info(f"Injecting {len(missing_fields)} new fields into {entity_name}.java...")
         inject_new_fields_into_existing_entity(entity_name, missing_fields)
-        
-        # Update messages for new fields
-        if mode != "dry-run" and mode != "quiet":
-            new_field_names = [f["name"] for f in missing_fields]
-            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
     
     # Also inject fields that are in CSV + changelog but missing from Java
     # (e.g., field was added, dropped, and re-added to CSV)
@@ -1388,10 +1550,6 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         if mode != "quiet":
             logger.info(f"Injecting {len(re_added_fields)} re-added fields into {entity_name}.java...")
         inject_new_fields_into_existing_entity(entity_name, re_added_fields)
-        
-        if mode != "dry-run" and mode != "quiet":
-            new_field_names = [f["name"] for f in re_added_fields]
-            update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, new_field_names, [])
     
     # Detect dropped columns from DB
     dropped_columns = detect_dropped_columns(entity_name, db_adapter)
@@ -1562,6 +1720,15 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
             logger.info(f"Generating incremental migration for {entity_name}: drop columns {all_dropped}")
             write_file(filename, content)
             logger.info(f"⚠️ Created DROP changelog (data will be lost!): {filename}")
+    
+    # Update messages once at the end with all current fields
+    if messages_need_update and mode != "dry-run" and mode != "quiet" and entity_name != "User":
+        relations_list = get_relations_from_csv("relations.csv", entity_name)
+        csv_fields = _read_entity_fields(entity_name)
+        all_field_names = [f["name"] for f in csv_fields]
+        relation_field_names = [rel["field"] for rel in relations_list]
+        all_field_names = list(set(all_field_names + relation_field_names))
+        update_messages_entity(str(PROIECT_PATH), f"{COMPANY}.{project_name}", entity_name, all_field_names, relations_list)
 
 
 def migrate_all_entities(mode: str = "prompt") -> None:
