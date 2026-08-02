@@ -174,3 +174,41 @@ def append_unique(file_path: str, lines_to_add: list[str]) -> None:
                     )
                     header_written = True
                 f.write(line + "\n")
+
+
+def update_checkbox_required_state_property() -> None:
+    csv_path = Path("entities.csv")
+    has_mandatory_boolean = False
+    if csv_path.exists():
+        with csv_path.open(encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["field_type"].strip().lower() in ("boolean", "bool") and row["mandatory"].strip().lower() == "true":
+                    has_mandatory_boolean = True
+                    break
+
+    app_props_path = Path("src/main/resources/application.properties")
+    if not app_props_path.exists():
+        return
+
+    content = app_props_path.read_text(encoding="utf-8")
+    prop_line = "jmix.ui.component.checkbox-required-state-initialization-enabled=false\n"
+
+    if has_mandatory_boolean:
+        if "jmix.ui.component.checkbox.required-state-initialization-enabled" not in content:
+            content = content.replace(
+                "jmix.ui.composite-menu=true\n",
+                f"jmix.ui.composite-menu=true\n{prop_line}",
+            )
+            app_props_path.write_text(content, encoding="utf-8")
+    else:
+        lines = content.splitlines()
+        new_lines = [
+            line for line in lines
+            if not line.strip().startswith("jmix.ui.component.checkbox-required-state-initialization-enabled")
+            and not line.strip().startswith("jmix.ui.component.checkbox.required-state-initialization-enabled")
+        ]
+        new_content = "\n".join(new_lines)
+        if not new_content.endswith("\n"):
+            new_content += "\n"
+        app_props_path.write_text(new_content, encoding="utf-8")

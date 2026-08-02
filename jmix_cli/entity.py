@@ -150,7 +150,7 @@ def _build_imports_and_fields(fields_list: list[dict[str, Any]], traits: dict[st
             instance_name_annotation = "    @InstanceName\n"
             is_first_text = False
 
-        java_business_fields += f"{instance_name_annotation}{validation_annotation}    @Column({column_props})\n    private {f_type} {f_name};\n\n"
+        java_business_fields += f"{instance_name_annotation}{validation_annotation}    @Column({column_props})\n    private {f_type} {f_name}{' = false' if f_type.lower() == 'boolean' and field.get('mandatory') else ''};\n\n"
 
         f_caps = f_name[0].upper() + f_name[1:]
         java_business_methods += f"    public {f_type} get{f_caps}() {{\n        return {f_name};\n    }}\n\n    public void set{f_caps}({f_type} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"

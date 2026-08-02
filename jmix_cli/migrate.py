@@ -619,6 +619,7 @@ def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
                     "change": "nullable",
                     "old": java_field["mandatory"],
                     "new": csv_field["mandatory"],
+                    "field_type": csv_field["type"],
                 }
             )
         if csv_field["unique"] != java_field["unique"]:
@@ -1344,6 +1345,12 @@ def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[d
                     new_col = f'@NotNull\n    @Column(name = "{field_upper}", nullable = false)'
                     if old_col in content and f'@Column(name = "{field_upper}", nullable = false)' not in content:
                         content = content.replace(old_col, new_col)
+                    # For Boolean fields, add default value false when becoming mandatory
+                    if change.get("field_type", "").lower() == "boolean":
+                        old_decl = f"private Boolean {field_name};"
+                        new_decl = f"private Boolean {field_name} = false;"
+                        if old_decl in content and f"private Boolean {field_name} = false;" not in content:
+                            content = content.replace(old_decl, new_decl)
                 else:
                     # Make non-mandatory: remove @NotNull and nullable = false
                     # First, remove nullable = false from @Column
@@ -1355,6 +1362,12 @@ def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[d
                     # Regex: @NotNull followed by any annotation lines, then @Column for this field
                     pattern = rf'(    @NotNull\n)((?:    @\w+.*\n)*)(    @Column\(name = "{field_upper}"\))'
                     content = re.sub(pattern, r'\2\3', content)
+
+                    # For Boolean fields, remove default value false when becoming non-mandatory
+                    if change.get("field_type", "").lower() == "boolean":
+                        old_decl = f"private Boolean {field_name} = false;"
+                        new_decl = f"private Boolean {field_name};"
+                        content = content.replace(old_decl, new_decl)
 
         elif change_type == "type":
             old_type = change["old"]

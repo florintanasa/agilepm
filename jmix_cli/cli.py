@@ -38,7 +38,7 @@ from pathlib import Path
 
 from jmix_cli.exceptions import JmixCliError, ConfigurationError, GenerationError, UserInputError
 from jmix_cli.utils import get_logger
-from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, validate_csv_path
+from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, update_checkbox_required_state_property, validate_csv_path
 from jmix_cli.entity import (
     _inject_composition_into_parent,
     get_entities_from_csv,
@@ -856,6 +856,7 @@ def main() -> None:
                 if composition_rels:
                     _inject_composition_into_parent(ent, composition_rels)
             _finalize_composition_relationships()
+            update_checkbox_required_state_property()
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
 
@@ -1021,6 +1022,7 @@ def main() -> None:
             logger.info("=" * 70)
             logger.info("[⚡] SUCCESS: Project scaffolding built perfectly from CSV maps!")
             logger.info("=" * 70 + "\n")
+            update_checkbox_required_state_property()
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
 
@@ -1028,6 +1030,7 @@ def main() -> None:
             logger.info("[*] Running incremental DB migrations for all entities...")
             mode = "force" if "--force" in sys.argv else "prompt"
             migrate_all_entities(mode)
+            update_checkbox_required_state_property()
             return
 
         if len(sys.argv) == 2:

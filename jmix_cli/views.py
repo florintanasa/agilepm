@@ -191,7 +191,7 @@ def gen_detail_view_from_csv(
         f_type = field["type"].lower()
         if f_type in ["boolean", "bool"]:
             xml_form_components += (
-                f'            <checkBox id="{f_name}Field" property="{f_name}"/>\n'
+                f'            <checkbox id="{f_name}Field" property="{f_name}"/>\n'
             )
         elif f_type in ["date", "localdate", "datetime", "localdatetime"]:
             xml_form_components += (
