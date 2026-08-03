@@ -698,7 +698,18 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
         if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1", "COMPOSITION_1:N"):
             continue
         f_name = rel["field"]
-        csv_col_name = f"{f_name.upper()}_ID"
+        # For source-side relations the FK column is FIELD_ID.
+        # For target-side COMPOSITION_1:N the FK column is SOURCE_ENTITY_ID
+        # because the column lives in the child table and is named after the
+        # parent entity.
+        if rel_type == "COMPOSITION_1:N":
+            csv_col_name = f"{rel['target'].upper()}_ID"
+            # In the child entity, the Java field name is the source entity's
+            # lowerCamelCase, not the CSV field_name.
+            java_field_name = rel["target"][0].lower() + rel["target"][1:]
+        else:
+            csv_col_name = f"{f_name.upper()}_ID"
+            java_field_name = f_name
 
         # Skip if FK column doesn't exist yet in DB/changelog — a separate
         # addColumn changelog needs to be generated first.
@@ -711,7 +722,7 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
             r'(@JoinColumn\(name\s*=\s*"(\w+_ID)"[^)]*\)\s*\n'
             r'(?:    @NotNull\n)?\s*'
             r'@(?:ManyToOne|OneToOne)\(fetch = FetchType\.LAZY\)\s*\n    )'
-            f'private {rel["target"]} {f_name};'
+            f'private {rel["target"]} {java_field_name};'
         )
         join_match = re.search(field_pattern, content)
         if join_match:
@@ -832,11 +843,20 @@ def detect_missing_relation_columns(entity_name: str) -> list[dict[str, Any]]:
         if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1", "COMPOSITION_1:N"):
             continue
         f_name = rel["field"]
-        col_name = f"{f_name.upper()}_ID"
+        # For source-side relations the FK column is FIELD_ID.
+        # For target-side COMPOSITION_1:N the FK column is SOURCE_ENTITY_ID
+        # because the column lives in the child table and is named after the
+        # parent entity.
+        if rel_type == "COMPOSITION_1:N":
+            col_name = f"{rel['target'].upper()}_ID"
+            csv_field_name = rel["target"][0].lower() + rel["target"][1:]
+        else:
+            col_name = f"{f_name.upper()}_ID"
+            csv_field_name = f_name
         if col_name not in existing_columns:
             missing.append(
                 {
-                    "name": f_name,
+                    "name": csv_field_name,
                     "type": "UUID",
                     "mandatory": rel.get("mandatory", False),
                     "unique": rel_type in ("1:1", "COMPOSITION_1:1"),
