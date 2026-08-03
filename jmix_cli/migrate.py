@@ -677,6 +677,14 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
 
     content = entity_path.read_text(encoding="utf-8")
 
+    # Collect FK columns that already exist in DB/changelog so we don't
+    # generate metadata changes for columns that haven't been created yet.
+    db_adapter = HSQLDBAdapter()
+    table_name = get_table_name(entity_name)
+    db_columns = db_adapter.get_columns(table_name)
+    changelog_columns = get_existing_columns_from_changelogs(table_name)
+    existing_columns = db_columns | changelog_columns
+
     changes: list[dict[str, Any]] = []
     for rel in relations:
         rel_type = rel["type"].strip().upper()
@@ -684,6 +692,11 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
             continue
         f_name = rel["field"]
         csv_col_name = f"{f_name.upper()}_ID"
+
+        # Skip if FK column doesn't exist yet in DB/changelog — a separate
+        # addColumn changelog needs to be generated first.
+        if csv_col_name not in existing_columns:
+            continue
 
         # Read the actual @JoinColumn column name from Java to handle renames
         # (e.g., field renamed from 'priority' to 'mumu' but DB column stays PRIORITY_ID)
@@ -742,6 +755,49 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
             )
 
     return changes
+
+
+def detect_missing_relation_columns(entity_name: str) -> list[dict[str, Any]]:
+    """Detect relation FK columns that don't exist yet in DB/changelog.
+
+    For N:1, 1:1, and COMPOSITION_1:1 relations where the entity is the
+    *source*, the FK column ``<FIELD>_ID`` lives on the entity's table.
+    When that column is missing from both the database and existing
+    changelogs, it means the relation was just added to ``relations.csv``
+    and needs an ``addColumn`` changelog.
+
+    Returns a list of dicts compatible with ``gen_add_column_changelog``.
+    """
+    from jmix_cli.entity import get_relations_from_csv
+
+    relations = get_relations_from_csv("relations.csv", entity_name)
+    if not relations:
+        return []
+
+    db_adapter = HSQLDBAdapter()
+    table_name = get_table_name(entity_name)
+    db_columns = db_adapter.get_columns(table_name)
+    changelog_columns = get_existing_columns_from_changelogs(table_name)
+    existing_columns = db_columns | changelog_columns
+
+    missing: list[dict[str, Any]] = []
+    for rel in relations:
+        rel_type = rel["type"].strip().upper()
+        if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1"):
+            continue
+        f_name = rel["field"]
+        col_name = f"{f_name.upper()}_ID"
+        if col_name not in existing_columns:
+            missing.append(
+                {
+                    "name": f_name,
+                    "type": "UUID",
+                    "mandatory": rel.get("mandatory", False),
+                    "unique": rel_type in ("1:1", "COMPOSITION_1:1"),
+                }
+            )
+
+    return missing
 
 
 def _apply_relation_field_renames(entity_name: str) -> list[str]:
@@ -1475,6 +1531,13 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
     # Detect missing columns from DB/changelogs (excluding renamed fields)
     all_missing = detect_missing_columns(entity_name, db_adapter)
     missing_fields = [f for f in all_missing if f["name"] not in renamed_new_names]
+
+    # Detect missing relation FK columns (new relations added to relations.csv
+    # whose FK column/join table does not exist yet in DB or changelogs).
+    missing_relation_cols = detect_missing_relation_columns(entity_name)
+    missing_relation_cols = [
+        f for f in missing_relation_cols if f["name"].upper() not in renamed_new_names
+    ]
     
     table_name = get_table_name(entity_name)
     
@@ -1573,8 +1636,8 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         if name.lower() in csv_fields_by_name
     ]
     
-    if missing_fields or added_field_dicts:
-        new_fields = missing_fields + added_field_dicts
+    if missing_fields or added_field_dicts or missing_relation_cols:
+        new_fields = missing_fields + added_field_dicts + missing_relation_cols
         # Deduplicate by field name (case-insensitive) to prevent duplicate changelogs
         seen_names: set[str] = set()
         new_fields = [
@@ -1582,30 +1645,31 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
             if f["name"].upper() not in seen_names
             and not seen_names.add(f["name"].upper())
         ]
-        content = gen_add_column_changelog(entity_name, new_fields)
-        target_dir = (
-            PROIECT_PATH
-            / "src"
-            / "main"
-            / "resources"
-            / company_path
-            / project_name
-            / "liquibase"
-            / "changelog"
-            / datetime.now().strftime("%Y")
-            / datetime.now().strftime("%m")
-        )
-        ensure_dir(str(target_dir))
-        filename = target_dir / f"{timestamp}-alter-{table_name}-addField.xml"
-        
-        if mode != "quiet":
-            logger.info(f"Generating incremental migration for {entity_name}: add columns {new_fields}")
-        if mode != "dry-run":
-            write_file(filename, content)
+        if new_fields:
+            content = gen_add_column_changelog(entity_name, new_fields)
+            target_dir = (
+                PROIECT_PATH
+                / "src"
+                / "main"
+                / "resources"
+                / company_path
+                / project_name
+                / "liquibase"
+                / "changelog"
+                / datetime.now().strftime("%Y")
+                / datetime.now().strftime("%m")
+            )
+            ensure_dir(str(target_dir))
+            filename = target_dir / f"{timestamp}-alter-{table_name}-addField.xml"
+            
             if mode != "quiet":
-                logger.info(f"✨ Created incremental changelog: {filename}")
-        else:
-            logger.info(f"[dry-run] Would create: {filename}")
+                logger.info(f"Generating incremental migration for {entity_name}: add columns {new_fields}")
+            if mode != "dry-run":
+                write_file(filename, content)
+                if mode != "quiet":
+                    logger.info(f"✨ Created incremental changelog: {filename}")
+            else:
+                logger.info(f"[dry-run] Would create: {filename}")
     
     # Generate rename changelog
     if renamed_fields:
