@@ -158,6 +158,99 @@ def _build_imports_and_fields(fields_list: list[dict[str, Any]], traits: dict[st
     return java_traits_fields, java_traits_methods, java_business_fields, java_business_methods, dinamic_imports
 
 
+def _get_auto_inverse_11_relations(entity_name: str) -> list[dict[str, Any]]:
+    """Get synthetic inverse 1:1 relations for an entity when it is the TARGET of
+    a 1:1 relation defined only on the source side.
+
+    For each 1:1 relation where ``entity_name`` is the target but not the source,
+    this returns a synthetic relation dict that describes the inverse side:
+        - type  = "1:1" (inverse)
+        - field = source_entity lowerCamelCase (e.g. "user" from "User")
+        - target = source entity name
+
+    The synthetic relations carry an extra key ``"_is_inverse"`` so callers can
+    distinguish them from real CSV rows.
+    """
+    from jmix_cli.entity import get_relations_from_csv
+
+    synthetic: list[dict[str, Any]] = []
+    seen_sources: set[str] = set()
+
+    # Relations where entity IS the source (already handled explicitly)
+    for rel in get_relations_from_csv("relations.csv", entity_name):
+        if rel["type"].strip().upper() == "1:1":
+            seen_sources.add(rel["target"].strip().upper())
+
+    # Scan ALL relations for entries where entity is the TARGET
+    all_relations_path = Path("relations.csv")
+    if not all_relations_path.exists():
+        return synthetic
+
+    with all_relations_path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            tgt = row["target_entity"].strip()
+            if tgt.upper() != entity_name.upper():
+                continue
+            src = row["source_entity"].strip()
+            if src.upper() in seen_sources:
+                continue  # source already defines its own side
+            r_type = row["relation_type"].strip().upper()
+            if r_type != "1:1":
+                continue
+            f_name = row["field_name"].strip()
+            # Inverse field name: source entity in lowerCamelCase
+            inv_field = src[0].lower() + src[1:] if src else src.lower()
+            # mandatory of inverse = opposite of source mandatory
+            src_mandatory = row["mandatory"].strip().lower() == "true"
+            synthetic.append(
+                {
+                    "type": "1:1",
+                    "target": src,
+                    "field": inv_field,
+                    "mandatory": not src_mandatory,
+                    "_is_inverse": True,
+                    "_source_entity": src,
+                    "_source_field": f_name,
+                }
+            )
+    return synthetic
+
+
+def _inject_inverse_11_into_target(entity_name: str, relations_list: list[dict[str, Any]]) -> None:
+    """Inject the inverse side of 1:1 relations into ``entity_name`` when it is
+    the TARGET of a 1:1 relation defined only on the source side.
+
+    The inverse field name is the source entity's lowerCamelCase, and the
+    annotation uses ``mappedBy`` pointing to the source field.
+    """
+    for rel in relations_list:
+        if not rel.get("_is_inverse"):
+            continue
+        src_class = rel["_source_entity"]
+        src_field = rel["_source_field"]
+        inv_field_name = rel["field"]  # already computed as src lowerCamelCase
+        tgt_file_path = (
+            PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
+        )
+        if not tgt_file_path.exists():
+            continue
+        java_content = tgt_file_path.read_text(encoding="utf-8")
+        if f"private {src_class} {inv_field_name};" in java_content:
+            continue
+        logger.info(f" 🔗 Auto-injecting inverse 1:1 in {entity_name}: {inv_field_name} (mappedBy={src_field})")
+        inv_field = f'    @OneToOne(fetch = FetchType.LAZY, mappedBy = "{src_field}")\n    private {src_class} {inv_field_name};\n\n'
+        inv_caps = inv_field_name[0].upper() + inv_field_name[1:]
+        inv_methods = f"    public {src_class} get{inv_caps}() {{\n        return {inv_field_name};\n    }}\n\n"
+        inv_methods += f"    public void set{inv_caps}({src_class} {inv_field_name}) {{\n        this.{inv_field_name} = {inv_field_name};\n    }}\n\n"
+        java_content = inject_import_if_missing(java_content, "jakarta.persistence.OneToOne")
+        java_content = inject_import_if_missing(java_content, "jakarta.persistence.FetchType")
+        last_brace = java_content.rfind("}")
+        if last_brace != -1:
+            java_content = java_content[:last_brace] + "\n" + inv_methods + java_content[last_brace:]
+        tgt_file_path.write_text(java_content, encoding="utf-8")
+
+
 def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], name: str) -> tuple[str, str, set[str]]:
     java_relation_fields = ""
     java_relation_methods = ""
@@ -513,6 +606,15 @@ def gen_entity_mechanic_from_csv(
     else:
         table_annotation = f'@Table(name = "{table_name}")'
 
+    # Extend relations_list with auto-inverse 1:1 relations so changelog generation
+    # covers both sides even when only one direction is defined in relations.csv
+    auto_inverse_rels = _get_auto_inverse_11_relations(name)
+    existing_source_targets = {rel["target"].upper() for rel in relations_list if rel.get("type", "").upper() == "1:1"}
+    all_relations = list(relations_list)
+    for inv in auto_inverse_rels:
+        if inv["target"].upper() not in existing_source_targets:
+            all_relations.append(inv)
+
     (
         java_traits_fields,
         java_traits_methods,
@@ -521,7 +623,7 @@ def gen_entity_mechanic_from_csv(
         dinamic_imports,
     ) = _build_imports_and_fields(fields_list, traits)
 
-    java_relation_fields, java_relation_methods, rel_imports = _build_relation_fields_and_methods(relations_list, name)
+    java_relation_fields, java_relation_methods, rel_imports = _build_relation_fields_and_methods(all_relations, name)
     dinamic_imports.update(rel_imports)
 
     imports_block = "\n".join(sorted(list(dinamic_imports)))
@@ -561,3 +663,6 @@ public class {name} {{
     td = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity"
     write_file(td / f"{name}.java", java_content)
     logger.info("✨ Entity saved successfully in: " + str(td / f"{name}.java"))
+
+    # Auto-inject inverse 1:1 fields into target entities that don't define their own side
+    _inject_inverse_11_into_target(name, relations_list)

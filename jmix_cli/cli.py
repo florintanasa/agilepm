@@ -244,50 +244,13 @@ def _generate_single_entity(name: str) -> None:
         if relations_list:
             gen_liquibase_relations_changelog("User", relations_list)
             inject_relations_into_existing_user(name, relations_list)
-            from jmix_cli.utils import replace_entity_messages
-            from jmix_cli.i18n import ask_ollama_translation
-            resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
-            messages_files = list(resources_path.glob("messages*.properties"))
-            iso_lang_names = {
-                "ar": "Arabic",
-                "ckb": "Central Kurdish",
-                "de": "German",
-                "el": "Greek",
-                "es": "Spanish",
-                "fr": "French",
-                "it": "Italian",
-                "nl": "Dutch",
-                "pt": "Brazilian Portuguese",
-                "ro": "Romanian",
-                "ru": "Russian",
-                "tr": "Turkish",
-                "zh": "Simplified Chinese",
-            }
-            for messages_file in messages_files:
-                stem = messages_file.stem
-                lang_code = "en" if stem == "messages" else stem.split("_", 1)[1] if "_" in stem else stem
-                primary_iso = lang_code.split("_")[0].lower()
-                lang_name = iso_lang_names.get(primary_iso, primary_iso)
-                relation_lines = []
-                for rel in relations_list:
-                    f_name = rel["field"]
-                    spaced_name = (
-                        "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
-                    )
-                    readable_en = spaced_name.capitalize()
-                    if lang_code == "en":
-                        label = readable_en
-                    else:
-                        label = ask_ollama_translation(readable_en, lang_name)
-                        if not label or len(label) > 50:
-                            label = readable_en
-                    relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={label}")
-                existing_lines = messages_file.read_text(encoding="utf-8").splitlines() if messages_file.exists() else []
-                user_lines = [line for line in existing_lines if line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
-                non_user_lines = [line for line in existing_lines if not line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
-                combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
-                new_content = "\n".join(non_user_lines[:len(non_user_lines) - len(user_lines)] + combined_user_lines) + "\n"
-                messages_file.write_text(new_content, encoding="utf-8")
+            update_messages_entity(
+                project_dir=".",
+                base_package=COMPANY + "." + project_name,
+                entity_name=name,
+                traits_list=["username", "password", "firstName", "lastName", "email", "active", "timeZoneId"],
+                relations_list=relations_list,
+            )
         else:
             logger.info("   -> No relationships were configured for the User in relations.csv.")
     else:
@@ -790,50 +753,13 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
-                        from jmix_cli.utils import replace_entity_messages
-                        from jmix_cli.i18n import ask_ollama_translation
-                        resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
-                        messages_files = list(resources_path.glob("messages*.properties"))
-                        iso_lang_names = {
-                            "ar": "Arabic",
-                            "ckb": "Central Kurdish",
-                            "de": "German",
-                            "el": "Greek",
-                            "es": "Spanish",
-                            "fr": "French",
-                            "it": "Italian",
-                            "nl": "Dutch",
-                            "pt": "Brazilian Portuguese",
-                            "ro": "Romanian",
-                            "ru": "Russian",
-                            "tr": "Turkish",
-                            "zh": "Simplified Chinese",
-                        }
-                        for messages_file in messages_files:
-                            stem = messages_file.stem
-                            lang_code = "en" if stem == "messages" else stem.split("_", 1)[1] if "_" in stem else stem
-                            primary_iso = lang_code.split("_")[0].lower()
-                            lang_name = iso_lang_names.get(primary_iso, primary_iso)
-                            relation_lines = []
-                            for rel in relations_list:
-                                f_name = rel["field"]
-                                spaced_name = (
-                                    "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
-                                )
-                                readable_en = spaced_name.capitalize()
-                                if lang_code == "en":
-                                    label = readable_en
-                                else:
-                                    label = ask_ollama_translation(readable_en, lang_name)
-                                    if not label or len(label) > 50:
-                                        label = readable_en
-                                relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={label}")
-                            existing_lines = messages_file.read_text(encoding="utf-8").splitlines() if messages_file.exists() else []
-                            user_lines = [line for line in existing_lines if line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
-                            non_user_lines = [line for line in existing_lines if not line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
-                            combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
-                            new_content = "\n".join(non_user_lines + combined_user_lines) + "\n"
-                            messages_file.write_text(new_content, encoding="utf-8")
+                        update_messages_entity(
+                            project_dir=".",
+                            base_package=COMPANY + "." + project_name,
+                            entity_name="User",
+                            traits_list=["username", "password", "firstName", "lastName", "email", "active", "timeZoneId"],
+                            relations_list=relations_list,
+                        )
                 else:
                     traits = get_traits_from_csv("traits.csv", ent)
                     fields_list = get_entities_from_csv("entities.csv", ent)
@@ -915,50 +841,13 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
-                        from jmix_cli.utils import replace_entity_messages
-                        from jmix_cli.i18n import ask_ollama_translation
-                        resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
-                        messages_files = list(resources_path.glob("messages*.properties"))
-                        iso_lang_names = {
-                            "ar": "Arabic",
-                            "ckb": "Central Kurdish",
-                            "de": "German",
-                            "el": "Greek",
-                            "es": "Spanish",
-                            "fr": "French",
-                            "it": "Italian",
-                            "nl": "Dutch",
-                            "pt": "Brazilian Portuguese",
-                            "ro": "Romanian",
-                            "ru": "Russian",
-                            "tr": "Turkish",
-                            "zh": "Simplified Chinese",
-                        }
-                        for messages_file in messages_files:
-                            stem = messages_file.stem
-                            lang_code = "en" if stem == "messages" else stem.split("_", 1)[1] if "_" in stem else stem
-                            primary_iso = lang_code.split("_")[0].lower()
-                            lang_name = iso_lang_names.get(primary_iso, primary_iso)
-                            relation_lines = []
-                            for rel in relations_list:
-                                f_name = rel["field"]
-                                spaced_name = (
-                                    "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
-                                )
-                                readable_en = spaced_name.capitalize()
-                                if lang_code == "en":
-                                    label = readable_en
-                                else:
-                                    label = ask_ollama_translation(readable_en, lang_name)
-                                    if not label or len(label) > 50:
-                                        label = readable_en
-                                relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={label}")
-                            existing_lines = messages_file.read_text(encoding="utf-8").splitlines() if messages_file.exists() else []
-                            user_lines = [line for line in existing_lines if line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
-                            non_user_lines = [line for line in existing_lines if not line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
-                            combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
-                            new_content = "\n".join(non_user_lines + combined_user_lines) + "\n"
-                            messages_file.write_text(new_content, encoding="utf-8")
+                        update_messages_entity(
+                            project_dir=".",
+                            base_package=COMPANY + "." + project_name,
+                            entity_name="User",
+                            traits_list=["username", "password", "firstName", "lastName", "email", "active", "timeZoneId"],
+                            relations_list=relations_list,
+                        )
                 else:
                     logger.info(f"   ▶️ Building Domain Model: {ent}")
                     traits = get_traits_from_csv("traits.csv", ent)

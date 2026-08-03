@@ -153,6 +153,11 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
     change_sets = []
 
     for rel in relations_list:
+        # Auto-inverse 1:1 relations (target-only definitions) do NOT generate a
+        # new FK changeset: the FK column already exists in the original source
+        # table. They are handled only for i18n / Java field injection.
+        if rel.get("_is_inverse"):
+            continue
         tgt_table = rel["target"].upper()
         if tgt_table == "USER":
             tgt_table = "USER_"

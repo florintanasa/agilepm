@@ -338,6 +338,16 @@ def _get_relation_field_names(entity_name: str) -> set[str]:
             inv_field = rel["source"][0].lower() + rel["source"][1:]
             field_names.add(inv_field.upper())
 
+    # Also check relations where entity is the TARGET of a plain 1:1 (auto-inverse)
+    for rel in _read_all_relations():
+        if rel["target"].upper() != entity_name.upper():
+            continue
+        if rel["type"].strip().upper() == "1:1":
+            # Auto-inverse field: source entity lowerCamelCase
+            src = rel["source_entity"]
+            inv_field = src[0].lower() + src[1:] if src else src.lower()
+            field_names.add(inv_field.upper())
+
     return field_names
 
 

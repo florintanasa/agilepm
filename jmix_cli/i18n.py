@@ -285,6 +285,43 @@ def update_messages_entity(
                     f"{base_package}.entity/{n}.{f_name}={translate_label_relation}"
                 )
 
+        # Auto-inverse 1:1: generate messages for the inverse field that will be
+        # injected into this entity (when this entity is the TARGET of a 1:1
+        # relation defined only on the source side).
+        from jmix_cli.entity import _get_auto_inverse_11_relations
+        for inv in _get_auto_inverse_11_relations(n):
+            if not inv.get("_is_inverse"):
+                continue
+            f_name = inv["field"]
+            src_class = inv["_source_entity"]
+            spaced_name = (
+                "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
+            )
+            readable_en = spaced_name.capitalize()
+            if locale == "en":
+                target_lines.append(
+                    f"{base_package}.entity/{n}.{f_name}={readable_en}"
+                )
+                target_lines.append(
+                    f"{base_package}.view.{n.lower()}/{n.lower()}DetailView.{f_name}Field={readable_en}"
+                )
+                target_lines.append(
+                    f"{base_package}.view.{n.lower()}/{n.lower()}ListView.{f_name}Column={readable_en}"
+                )
+            else:
+                traducere_inv = ask_ollama_translation(readable_en, lang_name)
+                if not traducere_inv or len(traducere_inv) > 50:
+                    traducere_inv = readable_en
+                target_lines.append(
+                    f"{base_package}.entity/{n}.{f_name}={traducere_inv}"
+                )
+                target_lines.append(
+                    f"{base_package}.view.{n.lower()}/{n.lower()}DetailView.{f_name}Field={traducere_inv}"
+                )
+                target_lines.append(
+                    f"{base_package}.view.{n.lower()}/{n.lower()}ListView.{f_name}Column={traducere_inv}"
+                )
+
         for rel in relations_list:
             if rel["type"] == "COMPOSITION_1:N":
                 tgt_lower = rel["target"].lower()
