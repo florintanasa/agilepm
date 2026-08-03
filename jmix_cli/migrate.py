@@ -344,7 +344,7 @@ def _get_relation_field_names(entity_name: str) -> set[str]:
             continue
         if rel["type"].strip().upper() == "1:1":
             # Auto-inverse field: source entity lowerCamelCase
-            src = rel["source_entity"]
+            src = rel["source"]
             inv_field = src[0].lower() + src[1:] if src else src.lower()
             field_names.add(inv_field.upper())
 
