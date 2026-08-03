@@ -38,7 +38,7 @@ from pathlib import Path
 
 from jmix_cli.exceptions import JmixCliError, ConfigurationError, GenerationError, UserInputError
 from jmix_cli.utils import get_logger
-from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, company_path, inject_import_if_missing, project_name, update_checkbox_required_state_property, validate_csv_path
+from jmix_cli.utils import COMPANY, PROIECT_PATH, PROJECT, USER_STANDARD_FIELDS, company_path, inject_import_if_missing, project_name, update_checkbox_required_state_property, validate_csv_path
 from jmix_cli.entity import (
     _inject_composition_into_parent,
     get_entities_from_csv,
@@ -244,11 +244,15 @@ def _generate_single_entity(name: str) -> None:
         if relations_list:
             gen_liquibase_relations_changelog("User", relations_list)
             inject_relations_into_existing_user(name, relations_list)
+            computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == "User"]
+            computed_traits_list = [f for f in computed_traits_list if f not in USER_STANDARD_FIELDS]
+            if not computed_traits_list:
+                computed_traits_list = ["name"]
             update_messages_entity(
                 project_dir=".",
                 base_package=COMPANY + "." + project_name,
                 entity_name=name,
-                traits_list=["username", "password", "firstName", "lastName", "email", "active", "timeZoneId"],
+                traits_list=computed_traits_list,
                 relations_list=relations_list,
             )
         else:
@@ -753,11 +757,15 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
+                        computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == "User"]
+                        computed_traits_list = [f for f in computed_traits_list if f not in USER_STANDARD_FIELDS]
+                        if not computed_traits_list:
+                            computed_traits_list = ["name"]
                         update_messages_entity(
                             project_dir=".",
                             base_package=COMPANY + "." + project_name,
                             entity_name="User",
-                            traits_list=["username", "password", "firstName", "lastName", "email", "active", "timeZoneId"],
+                            traits_list=computed_traits_list,
                             relations_list=relations_list,
                         )
                 else:
@@ -841,11 +849,15 @@ def main() -> None:
                     if relations_list:
                         gen_liquibase_relations_changelog("User", relations_list)
                         inject_relations_into_existing_user("User", relations_list)
+                        computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == "User"]
+                        computed_traits_list = [f for f in computed_traits_list if f not in USER_STANDARD_FIELDS]
+                        if not computed_traits_list:
+                            computed_traits_list = ["name"]
                         update_messages_entity(
                             project_dir=".",
                             base_package=COMPANY + "." + project_name,
                             entity_name="User",
-                            traits_list=["username", "password", "firstName", "lastName", "email", "active", "timeZoneId"],
+                            traits_list=computed_traits_list,
                             relations_list=relations_list,
                         )
                 else:

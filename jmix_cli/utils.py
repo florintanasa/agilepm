@@ -67,6 +67,12 @@ project_name = (PROJECT or "").lower()
 COMPANY = get_company_name() or ""
 company_path = COMPANY.replace(".", "/")
 
+USER_STANDARD_FIELDS = frozenset({
+    "username", "password", "firstname", "lastname",
+    "email", "active", "timezoneid", "userprofile",
+    "firstName", "lastName", "timeZoneId",
+})
+
 
 def to_camel_case_lower(text: str) -> str:
     if not text:
