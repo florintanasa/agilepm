@@ -646,11 +646,13 @@ def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
 def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
     """Detect mandatory (nullable) changes for relation fields defined in relations.csv.
 
-    Only N:1 and 1:1 relations are checked — these generate a single-valued
-    field with a ``@JoinColumn`` FK column in the Java entity.  The detection
-    compares the ``mandatory`` flag from ``relations.csv`` against the presence
-    of ``@NotNull`` directly above the ``@JoinColumn`` / ``@ManyToOne`` /
-    ``@OneToOne`` annotation block in the existing Java file.
+    For N:1, 1:1, and COMPOSITION_1:1 relations, the FK column lives on the
+    *source* entity's table.  For COMPOSITION_1:N, the FK column lives on the
+    *target* entity's table.
+
+    The detection compares the ``mandatory`` flag from ``relations.csv``
+    against the presence of ``@NotNull`` directly above the ``@JoinColumn`` /
+    ``@ManyToOne`` / ``@OneToOne`` annotation block in the existing Java file.
 
     Each returned change dict uses the FK column name (``<field>_ID``) as
     ``column_name`` so it can flow through the same changelog / Java-update
@@ -659,7 +661,12 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
     from jmix_cli.entity import get_relations_from_csv
 
     relations = get_relations_from_csv("relations.csv", entity_name)
-    if not relations:
+    # For COMPOSITION_1:N the FK column is on the TARGET entity's table, so
+    # we also need relations where this entity is the TARGET.
+    target_relations = _read_target_relations_from_csv(entity_name, "COMPOSITION_1:N")
+    all_relations = relations + target_relations
+
+    if not all_relations:
         return []
 
     entity_path = (
@@ -686,9 +693,9 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
     existing_columns = db_columns | changelog_columns
 
     changes: list[dict[str, Any]] = []
-    for rel in relations:
+    for rel in all_relations:
         rel_type = rel["type"].strip().upper()
-        if rel_type not in ("N:1", "1:1"):
+        if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1", "COMPOSITION_1:N"):
             continue
         f_name = rel["field"]
         csv_col_name = f"{f_name.upper()}_ID"
@@ -757,11 +764,45 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
     return changes
 
 
+def _read_target_relations_from_csv(entity_name: str, rel_type_filter: str | None = None) -> list[dict[str, Any]]:
+    """Read relations from relations.csv where ``entity_name`` is the TARGET.
+
+    Optionally filter by relation type.  Returns the same dict shape as
+    ``get_relations_from_csv``, with the source/target swapped so that the
+    returned relations behave like source relations from the perspective of
+    the caller entity.
+    """
+    relations: list[dict[str, Any]] = []
+    csv_file = Path("relations.csv")
+    if not csv_file.exists():
+        return relations
+    required = ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"]
+    validate_csv_path("relations.csv", required)
+    with csv_file.open(mode="r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["target_entity"].strip().lower() != entity_name.lower():
+                continue
+            if rel_type_filter and row["relation_type"].strip().upper() != rel_type_filter.upper():
+                continue
+            relations.append(
+                {
+                    "type": row["relation_type"].strip(),
+                    "target": row["source_entity"].strip(),
+                    "field": row["field_name"].strip(),
+                    "mandatory": row["mandatory"].strip().lower() == "true",
+                }
+            )
+    return relations
+
+
 def detect_missing_relation_columns(entity_name: str) -> list[dict[str, Any]]:
     """Detect relation FK columns that don't exist yet in DB/changelog.
 
     For N:1, 1:1, and COMPOSITION_1:1 relations where the entity is the
     *source*, the FK column ``<FIELD>_ID`` lives on the entity's table.
+    For COMPOSITION_1:N, the FK column lives on the *target* entity's table.
+
     When that column is missing from both the database and existing
     changelogs, it means the relation was just added to ``relations.csv``
     and needs an ``addColumn`` changelog.
@@ -771,7 +812,12 @@ def detect_missing_relation_columns(entity_name: str) -> list[dict[str, Any]]:
     from jmix_cli.entity import get_relations_from_csv
 
     relations = get_relations_from_csv("relations.csv", entity_name)
-    if not relations:
+    # For COMPOSITION_1:N the FK column is on the TARGET table, so we also
+    # need relations where this entity is the TARGET.
+    target_relations = _read_target_relations_from_csv(entity_name, "COMPOSITION_1:N")
+    all_relations = relations + target_relations
+
+    if not all_relations:
         return []
 
     db_adapter = HSQLDBAdapter()
@@ -781,9 +827,9 @@ def detect_missing_relation_columns(entity_name: str) -> list[dict[str, Any]]:
     existing_columns = db_columns | changelog_columns
 
     missing: list[dict[str, Any]] = []
-    for rel in relations:
+    for rel in all_relations:
         rel_type = rel["type"].strip().upper()
-        if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1"):
+        if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1", "COMPOSITION_1:N"):
             continue
         f_name = rel["field"]
         col_name = f"{f_name.upper()}_ID"
