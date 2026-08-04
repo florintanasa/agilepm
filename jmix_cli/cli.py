@@ -560,8 +560,8 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
 
     if build_gradle_path.exists():
         gradle_content = build_gradle_path.read_text(encoding="utf-8")
-        gradle_content = gradle_content.replace(
-            r"group\s*=\s*['\"].*?['\"]", f"group = '{target_group}'"
+        gradle_content = re.sub(
+            r"group\s*=\s*['\"].*?['\"]", f"group = '{target_group}'", gradle_content
         )
         if lang_key_for_map != "en" and lang_key_for_map in JMIX_TRANSLATIONS_MAP:
             addon_suffix = JMIX_TRANSLATIONS_MAP[lang_key_for_map]
@@ -578,9 +578,10 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
         prop_content = app_properties_path.read_text(encoding="utf-8")
         if "jmix.core.available-locales" in prop_content:
             if lang_key_for_map != "en":
-                prop_content = prop_content.replace(
+                prop_content = re.sub(
                     r"jmix\.core\.available-locales\s*=\s*(.*)",
                     f"jmix.core.available-locales = \\1,{lang_suffix}",
+                    prop_content,
                 )
                 logger.info(f"[+] Updated active core locales property: en,{lang_suffix}")
         else:
@@ -590,7 +591,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
             prop_content += locales_line
         app_properties_path.write_text(prop_content, encoding="utf-8")
 
-    if lang_key_for_map != "en" or True:
+    if True:  # Always generate message bundles: en base fallback + localized bundles
         msg_dir = target_dir / "src" / "main" / "resources" / new_package_slashes
         msg_dir.mkdir(parents=True, exist_ok=True)
         templates_dir = Path(".templates")
@@ -657,9 +658,10 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
             continue
         content = file_path.read_text(encoding="utf-8")
         if "settings.gradle" in str(file_path):
-            content = content.replace(
+            content = re.sub(
                 r"rootProject\.name\s*=\s*['\"].*?['\"]",
                 f"rootProject.name = '{project_name}'",
+                content,
             )
         content = content.replace(old_package_dots, base_package)
         content = content.replace(old_package_slashes, new_package_property_slashes)
