@@ -347,6 +347,49 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                         + java_tgt_content[package_end_idx + 1 :]
                     )
 
+            # Inject @ManyToOne back-reference into child entity so mappedBy resolves
+            src_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{src_class}.java"
+            if src_file_path.exists():
+                java_src_content = src_file_path.read_text(encoding="utf-8")
+                if f"private {tgt_class} {mapped_by_prop};" not in java_src_content:
+                    logger.info(f" 🔗 Injecting @ManyToOne back-reference ({tgt_class}) into child: {src_class}")
+                    sql_fk_col = f"{mapped_by_prop.upper()}_ID"
+                    n1_field = f'    @ManyToOne(fetch = FetchType.LAZY)\n    @JoinColumn(name = "{sql_fk_col}")\n    private {tgt_class} {mapped_by_prop};\n\n'
+                    n1_caps = mapped_by_prop[0].upper() + mapped_by_prop[1:]
+                    n1_methods = f"    public {tgt_class} get{n1_caps}() {{\n        return {mapped_by_prop};\n    }}\n\n"
+                    n1_methods += f"    public void set{n1_caps}({tgt_class} {mapped_by_prop}) {{\n        this.{mapped_by_prop} = {mapped_by_prop};\n    }}\n\n"
+                    src_last_brace = java_src_content.rfind("}")
+                    if src_last_brace != -1:
+                        java_src_content = (
+                            java_src_content[:src_last_brace]
+                            + n1_field
+                            + n1_methods
+                            + java_src_content[src_last_brace:]
+                        )
+                        java_src_content = inject_import_if_missing(java_src_content, "jakarta.persistence.ManyToOne")
+                        java_src_content = inject_import_if_missing(java_src_content, "jakarta.persistence.JoinColumn")
+                        java_src_content = inject_import_if_missing(java_src_content, "jakarta.persistence.FetchType")
+                        src_file_path.write_text(java_src_content, encoding="utf-8")
+
+            # Generate Liquibase FK changelog for child N:1 back-reference (if missing)
+            src_table = "USER_" if src_class == "User" else src_class.upper()
+            col_name = f"{mapped_by_prop.upper()}_ID"
+            try:
+                from jmix_cli.migrate import get_existing_columns_from_changelogs
+                existing_cols = get_existing_columns_from_changelogs(src_table)
+                if col_name not in existing_cols:
+                    from jmix_cli.liquibase import gen_liquibase_relations_changelog
+                    synthetic_rel = [{
+                        "type": "N:1",
+                        "target": tgt_class,
+                        "field": mapped_by_prop,
+                        "mandatory": rel.get("mandatory", False),
+                        "ownership": "",
+                    }]
+                    gen_liquibase_relations_changelog(src_class, synthetic_rel)
+            except ImportError:
+                pass
+
         elif rel["type"] == "COMPOSITION_1:1":
             sql_fk_col = f"{f_name.upper()}_ID"
             new_field = f'@Composition\n    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {src_class} {f_name};\n\n'
