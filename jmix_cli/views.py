@@ -36,6 +36,7 @@ from jmix_cli.utils import (
     company_path,
     project_name,
     write_file,
+    append_unique,
 )
 
 logger = get_logger("jmix_cli.views")
@@ -380,6 +381,46 @@ def _inject_composition_ui_into_parent(
                 "</formLayout>", f"</formLayout>\n{composition_grid}"
             )
         write_file(tgt_xml_path, xml_tgt_content)
+
+        # Add message keys for the composition DataGrid section title
+        from jmix_cli.i18n import ask_ollama_translation
+        import re as _re
+        base_package = f"{COMPANY}.{project_name}"
+        msg_key = f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}"
+        readable_en = f_name.capitalize()
+        properties_base = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+
+        locales = ["en"]
+        app_props = PROIECT_PATH / "src" / "main" / "resources" / "application.properties"
+        if app_props.exists():
+            for _line in app_props.read_text(encoding="utf-8").splitlines():
+                if "jmix.core.available-locales" in _line:
+                    _match = _re.search(r"jmix\.core\.available-locales\s*=\s*(.*)", _line)
+                    if _match:
+                        locales = [loc.strip() for loc in _match.group(1).split(",") if loc.strip()]
+
+        for locale in locales:
+            if locale == "en":
+                msg_value = readable_en
+            else:
+                try:
+                    _translated = ask_ollama_translation(readable_en, locale)
+                    msg_value = _translated if _translated else readable_en
+                except Exception:
+                    msg_value = readable_en
+
+            msg_line = f"{msg_key}={msg_value}"
+            _files = []
+            if locale == "en":
+                _files = [
+                    str(properties_base / "messages_en.properties"),
+                    str(properties_base / "messages.properties"),
+                ]
+            else:
+                _files = [str(properties_base / f"messages_{locale}.properties")]
+
+            for _pf in _files:
+                append_unique(_pf, [msg_line])
 
 
 def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]], fields_list: list[dict[str, Any]] | None = None) -> None:
