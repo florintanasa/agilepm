@@ -335,7 +335,7 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
             first_char_lower = tgt_class[0].lower()
             remaining_chars = tgt_class[1:]
             mapped_by_prop = first_char_lower + remaining_chars
-            new_field = f'    @Composition\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
+            new_field = f'    @Composition\n    @OnDelete(DeletePolicy.CASCADE)\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
             new_methods = f"    public List<{src_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
             new_methods += f"    public void set{f_caps}(List<{src_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
             if "import java.util.List;" not in java_tgt_content:
@@ -380,7 +380,7 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
         if "import io.jmix.core.metamodel.annotation.Composition;" not in java_tgt_content:
             java_tgt_content = java_tgt_content.replace(
                 f"package {COMPANY}.{project_name}.entity;",
-                f"package {COMPANY}.{project_name}.entity;\nimport io.jmix.core.metamodel.annotation.Composition;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.JoinColumn;\nimport jakarta.persistence.FetchType;",
+                f"package {COMPANY}.{project_name}.entity;\nimport io.jmix.core.metamodel.annotation.Composition;\nimport io.jmix.core.entity.annotation.OnDelete;\nimport io.jmix.core.entity.annotation.DeletePolicy;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.JoinColumn;\nimport jakarta.persistence.FetchType;",
             )
 
         if "    public UUID getId()" in java_tgt_content:

@@ -356,14 +356,21 @@ def _finalize_composition_relationships() -> None:
             if f"private {tgt_class} {f_name};" not in src_content:
                 logger.info(f" 🔗 Finalizing @Composition 1:1 in {src_class}")
                 sql_fk_col = f"{f_name.upper()}_ID"
-                comp_field = f'    @Composition\n    @JoinColumn(name = "{sql_fk_col}")\n    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
+                mandatory_val = row.get("mandatory", "false").strip().lower() == "true"
+                join_col_attr = f'@JoinColumn(name = "{sql_fk_col}", nullable = false)' if mandatory_val else f'@JoinColumn(name = "{sql_fk_col}")'
+                not_null_anno = "    @NotNull\n" if mandatory_val else ""
+                comp_field = f'    @Composition\n    @OnDelete(DeletePolicy.CASCADE)\n    {join_col_attr}\n{not_null_anno}    @OneToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
                 comp_caps = f_name[0].upper() + f_name[1:]
                 comp_methods = f"    public {tgt_class} get{comp_caps}() {{\n        return {f_name};\n    }}\n\n"
                 comp_methods += f"    public void set{comp_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
                 src_content = inject_import_if_missing(src_content, "io.jmix.core.metamodel.annotation.Composition")
+                src_content = inject_import_if_missing(src_content, "io.jmix.core.entity.annotation.OnDelete")
+                src_content = inject_import_if_missing(src_content, "io.jmix.core.entity.annotation.DeletePolicy")
                 src_content = inject_import_if_missing(src_content, "jakarta.persistence.OneToOne")
                 src_content = inject_import_if_missing(src_content, "jakarta.persistence.JoinColumn")
                 src_content = inject_import_if_missing(src_content, "jakarta.persistence.FetchType")
+                if mandatory_val:
+                    src_content = inject_import_if_missing(src_content, "jakarta.validation.constraints.NotNull")
                 if "    public UUID getId()" in src_content:
                     src_content = src_content.replace(
                         "    public UUID getId()",

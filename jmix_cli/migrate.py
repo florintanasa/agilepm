@@ -670,7 +670,7 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
     changes: list[dict[str, Any]] = []
     for rel in relations:
         rel_type = rel["type"].strip().upper()
-        if rel_type not in ("N:1", "1:1"):
+        if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1"):
             continue
         f_name = rel["field"]
         csv_col_name = f"{f_name.upper()}_ID"
@@ -769,7 +769,7 @@ def _apply_relation_field_renames(entity_name: str) -> list[str]:
 
     for rel in relations:
         rel_type = rel["type"].strip().upper()
-        if rel_type not in ("N:1", "1:1"):
+        if rel_type not in ("N:1", "1:1", "COMPOSITION_1:1"):
             continue
         csv_field = rel["field"].strip()
         tgt_class = rel["target"].strip()
