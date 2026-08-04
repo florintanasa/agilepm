@@ -594,7 +594,10 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
     if True:  # Always generate message bundles: en base fallback + localized bundles
         msg_dir = target_dir / "src" / "main" / "resources" / new_package_slashes
         msg_dir.mkdir(parents=True, exist_ok=True)
-        templates_dir = Path(".templates")
+        # Prefer local .templates/ (user custom templates), fall back to the
+        # template repo's .templates/ inside the freshly cloned project
+        local_templates = Path(".templates")
+        templates_dir = local_templates if local_templates.exists() else target_dir / ".templates"
         base_fallback_msg_path = msg_dir / "messages.properties"
         custom_messages_path = msg_dir / f"messages_{lang_suffix}.properties"
         eng_template_path = templates_dir / "messages_en.properties"
