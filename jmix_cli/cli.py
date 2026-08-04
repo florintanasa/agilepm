@@ -907,6 +907,13 @@ def main() -> None:
         elif action == "ui-detail-all":
             logger.info("[*] Launching UI-DETAIL generation for ALL entities...")
             ordered_list = get_sorted_entities_by_dependency()
+            logger.info("[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+            for ent in ordered_list:
+                relations_list = get_relations_from_csv("relations.csv", ent)
+                composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
+                if composition_rels:
+                    _inject_composition_into_parent(ent, composition_rels)
+            _finalize_composition_relationships()
             for ent in ordered_list:
                 fields_list = get_entities_from_csv("entities.csv", ent)
                 relations_list = get_relations_from_csv("relations.csv", ent)
@@ -1059,6 +1066,14 @@ def main() -> None:
             logger.info("[*] Running incremental DB migrations for all entities...")
             mode = "force" if "--force" in sys.argv else "prompt"
             migrate_all_entities(mode)
+            logger.info("[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
+            ordered_list = get_sorted_entities_by_dependency()
+            for ent in ordered_list:
+                relations_list = get_relations_from_csv("relations.csv", ent)
+                composition_rels = [rel for rel in relations_list if rel["type"] == "COMPOSITION_1:N"]
+                if composition_rels:
+                    _inject_composition_into_parent(ent, composition_rels)
+            _finalize_composition_relationships()
             update_checkbox_required_state_property()
             return
 
