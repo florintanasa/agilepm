@@ -598,10 +598,16 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
         base_fallback_msg_path = msg_dir / "messages.properties"
         custom_messages_path = msg_dir / f"messages_{lang_suffix}.properties"
         eng_template_path = templates_dir / "messages_en.properties"
+        base_template_path = templates_dir / "messages.properties"
         lang_template_path = templates_dir / f"messages_{lang_suffix}.properties"
 
-        # Always ensure messages.properties exists from English template
-        if eng_template_path.exists():
+        # Base fallback: prefer .templates/messages.properties (full Jmix template),
+        # fall back to messages_en.properties, or create empty
+        if base_template_path.exists():
+            if not base_fallback_msg_path.exists():
+                shutil.copy2(base_template_path, base_fallback_msg_path)
+                logger.info("[+] Generated base fallback file from .templates/messages.properties")
+        elif eng_template_path.exists():
             if not base_fallback_msg_path.exists():
                 shutil.copy2(eng_template_path, base_fallback_msg_path)
                 logger.info("[+] Generated standard base fallback file: messages.properties")
@@ -612,6 +618,14 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
                     encoding="utf-8",
                 )
                 logger.info("[+] Initialized empty base fallback file: messages.properties")
+
+        # Also copy messages_en.properties from .templates/ to project for explicit
+        # English locale support (login screen, User entity messages, etc.)
+        if lang_suffix != "en" and eng_template_path.exists():
+            en_in_project = msg_dir / "messages_en.properties"
+            if not en_in_project.exists():
+                shutil.copy2(eng_template_path, en_in_project)
+                logger.info("[+] Copied English locale bundle: messages_en.properties")
 
         # Determine source for localized bundle
         if lang_template_path.exists():
