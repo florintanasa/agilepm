@@ -365,7 +365,7 @@ def _finalize_composition_relationships() -> None:
                 comp_methods += f"    public void set{comp_caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
                 src_content = inject_import_if_missing(src_content, "io.jmix.core.metamodel.annotation.Composition")
                 src_content = inject_import_if_missing(src_content, "io.jmix.core.entity.annotation.OnDelete")
-                src_content = inject_import_if_missing(src_content, "io.jmix.core.entity.annotation.DeletePolicy")
+                src_content = inject_import_if_missing(src_content, "io.jmix.core.DeletePolicy")
                 src_content = inject_import_if_missing(src_content, "jakarta.persistence.OneToOne")
                 src_content = inject_import_if_missing(src_content, "jakarta.persistence.JoinColumn")
                 src_content = inject_import_if_missing(src_content, "jakarta.persistence.FetchType")

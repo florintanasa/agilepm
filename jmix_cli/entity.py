@@ -380,7 +380,7 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
         if "import io.jmix.core.metamodel.annotation.Composition;" not in java_tgt_content:
             java_tgt_content = java_tgt_content.replace(
                 f"package {COMPANY}.{project_name}.entity;",
-                f"package {COMPANY}.{project_name}.entity;\nimport io.jmix.core.metamodel.annotation.Composition;\nimport io.jmix.core.entity.annotation.OnDelete;\nimport io.jmix.core.entity.annotation.DeletePolicy;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.JoinColumn;\nimport jakarta.persistence.FetchType;",
+                f"package {COMPANY}.{project_name}.entity;\nimport io.jmix.core.metamodel.annotation.Composition;\nimport io.jmix.core.entity.annotation.OnDelete;\nimport io.jmix.core.DeletePolicy;\nimport jakarta.persistence.OneToOne;\nimport jakarta.persistence.JoinColumn;\nimport jakarta.persistence.FetchType;",
             )
 
         if "    public UUID getId()" in java_tgt_content:
