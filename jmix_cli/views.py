@@ -42,6 +42,29 @@ from jmix_cli.utils import (
 logger = get_logger("jmix_cli.views")
 
 
+def _replace_or_append(file_path: str, key: str, line: str) -> None:
+    """Replace the value of an existing property key, or append a new line if key is absent."""
+    path = Path(file_path)
+    if not path.exists():
+        return
+    lines = path.read_text(encoding="utf-8").splitlines()
+    found = False
+    for i, existing in enumerate(lines):
+        if existing.strip().startswith(f"{key}="):
+            lines[i] = line
+            found = True
+            break
+    content = "\n".join(lines)
+    if not content.endswith("\n"):
+        content += "\n"
+    if not found:
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += f"\n# Automated localization properties bundle layout for entity: {key.split('/')[-1] if '/' in key else key}\n"
+        content += line + "\n"
+    path.write_text(content, encoding="utf-8")
+
+
 # Mapping Java type (as in entities.csv) → Jmix textField datatype attribute.
 # Types not listed here (e.g. String) don't need a datatype (string is the default).
 _FIELD_TYPE_TO_DATATYPE: dict[str, str] = {
@@ -325,6 +348,59 @@ def _inject_composition_ui_into_parent(
         tgt_lower = tgt_class.lower()
         f_name = rel["field"]
         src_class = name
+
+        # Always update message keys for the composition DataGrid section title
+        # (must be BEFORE the 'DataGrid already exists' continue check, so that
+        #  corrected cache translations propagate to properties files on re-runs)
+        from jmix_cli.i18n import ask_ollama_translation
+        import re as _re
+        base_package = f"{COMPANY}.{project_name}"
+        msg_key = f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}"
+        readable_en = f_name.capitalize()
+        properties_base = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+
+        _iso_lang_names = {
+            "ar": "Arabic", "ckb": "Central Kurdish", "de": "German",
+            "el": "Greek", "es": "Spanish", "fr": "French",
+            "it": "Italian", "nl": "Dutch", "pt": "Brazilian Portuguese",
+            "ro": "Romanian", "ru": "Russian", "tr": "Turkish",
+            "zh": "Simplified Chinese",
+        }
+
+        locales = ["en"]
+        app_props = PROIECT_PATH / "src" / "main" / "resources" / "application.properties"
+        if app_props.exists():
+            for _line in app_props.read_text(encoding="utf-8").splitlines():
+                if "jmix.core.available-locales" in _line:
+                    _match = _re.search(r"jmix\.core\.available-locales\s*=\s*(.*)", _line)
+                    if _match:
+                        locales = [loc.strip() for loc in _match.group(1).split(",") if loc.strip()]
+
+        for locale in locales:
+            if locale == "en":
+                msg_value = readable_en
+            else:
+                _primary_iso = locale.split("_")[0].lower()
+                _lang_name = _iso_lang_names.get(_primary_iso, locale)
+                try:
+                    _translated = ask_ollama_translation(readable_en, _lang_name)
+                    msg_value = _translated if _translated else readable_en
+                except Exception:
+                    msg_value = readable_en
+
+            msg_line = f"{msg_key}={msg_value}"
+            _files = []
+            if locale == "en":
+                _files = [
+                    str(properties_base / "messages_en.properties"),
+                    str(properties_base / "messages.properties"),
+                ]
+            else:
+                _files = [str(properties_base / f"messages_{locale}.properties")]
+
+            for _pf in _files:
+                _replace_or_append(_pf, msg_key, msg_line)
+
         tgt_xml_path = (
             PROIECT_PATH
             / "src"
@@ -381,57 +457,6 @@ def _inject_composition_ui_into_parent(
                 "</formLayout>", f"</formLayout>\n{composition_grid}"
             )
         write_file(tgt_xml_path, xml_tgt_content)
-
-        # Add message keys for the composition DataGrid section title
-        from jmix_cli.i18n import ask_ollama_translation
-        import re as _re
-        base_package = f"{COMPANY}.{project_name}"
-        msg_key = f"{base_package}.view.{tgt_lower}/{tgt_lower}DetailView.{f_name}"
-        readable_en = f_name.capitalize()
-        properties_base = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
-
-        _iso_lang_names = {
-            "ar": "Arabic", "ckb": "Central Kurdish", "de": "German",
-            "el": "Greek", "es": "Spanish", "fr": "French",
-            "it": "Italian", "nl": "Dutch", "pt": "Brazilian Portuguese",
-            "ro": "Romanian", "ru": "Russian", "tr": "Turkish",
-            "zh": "Simplified Chinese",
-        }
-
-        locales = ["en"]
-        app_props = PROIECT_PATH / "src" / "main" / "resources" / "application.properties"
-        if app_props.exists():
-            for _line in app_props.read_text(encoding="utf-8").splitlines():
-                if "jmix.core.available-locales" in _line:
-                    _match = _re.search(r"jmix\.core\.available-locales\s*=\s*(.*)", _line)
-                    if _match:
-                        locales = [loc.strip() for loc in _match.group(1).split(",") if loc.strip()]
-
-        for locale in locales:
-            if locale == "en":
-                msg_value = readable_en
-            else:
-                _primary_iso = locale.split("_")[0].lower()
-                _lang_name = _iso_lang_names.get(_primary_iso, locale)
-                try:
-                    _translated = ask_ollama_translation(readable_en, _lang_name)
-                    msg_value = _translated if _translated else readable_en
-                except Exception:
-                    msg_value = readable_en
-
-            msg_line = f"{msg_key}={msg_value}"
-            _files = []
-            if locale == "en":
-                _files = [
-                    str(properties_base / "messages_en.properties"),
-                    str(properties_base / "messages.properties"),
-                ]
-            else:
-                _files = [str(properties_base / f"messages_{locale}.properties")]
-
-
-            for _pf in _files:
-                append_unique(_pf, [msg_line])
 
 
 def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]], fields_list: list[dict[str, Any]] | None = None) -> None:
