@@ -30,16 +30,16 @@ from pathlib import Path
 
 from jmix_cli.core.config import get_ollama_endpoint, get_ollama_model
 from jmix_cli.core.logger import get_logger
-from jmix_cli.i18n.cache import _cache_key, _load_cache, _persist_cache, _translation_cache
+from jmix_cli.i18n import cache as _i18n_cache
 
 logger = get_logger("jmix_cli.i18n")
 
 
 def ask_ollama_translation(text_to_translate: str, target_language_name: str) -> str:
-    _load_cache()
-    key = _cache_key(text_to_translate, target_language_name)
-    if key in _translation_cache:
-        return _translation_cache[key]
+    _i18n_cache._load_cache()
+    key = _i18n_cache._cache_key(text_to_translate, target_language_name)
+    if key in _i18n_cache._translation_cache:
+        return _i18n_cache._translation_cache[key]
 
     host, port = get_ollama_endpoint()
     model = get_ollama_model()
@@ -61,8 +61,8 @@ def ask_ollama_translation(text_to_translate: str, target_language_name: str) ->
             translated_text = data.get("response", "").strip()
             translated_text = translated_text.replace('"', "").replace("'", "")
             result = translated_text if translated_text else text_to_translate
-            _translation_cache[key] = result
-            _persist_cache()
+            _i18n_cache._translation_cache[key] = result
+            _i18n_cache._persist_cache()
             return result
     except (ConnectionError, TimeoutError, http.client.HTTPException, json.JSONDecodeError) as e:
         logger.error(f"[-] Ollama translation warning: {e}. Falling back to English.")

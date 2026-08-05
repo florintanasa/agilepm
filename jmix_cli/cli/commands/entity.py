@@ -57,17 +57,19 @@ def _update_menu(n: str) -> None:
     if not menu_path.exists():
         logger.warning(f"⚠️ I not found the file menu.xml in the path {menu_path}!")
         return
-    menu_item = f'    <item view="{n}.list" title="msg://{COMPANY}.{project_name}.view.{n.lower()}/{n.lower()}ListView.title"/>\n'
     content = menu_path.read_text(encoding="utf-8")
     if ('view="' + n + '.list"') in content:
         logger.info("ℹ️ View " + n + ".list allready exist in menu.")
         return
-    if "</menu>" in content:
-        new_content = content.replace("</menu>", menu_item + "</menu>")
-        menu_path.write_text(new_content, encoding="utf-8")
-        logger.info("Menu injected successfully into menu.xml!")
-    else:
-        logger.warning("⚠️ Invalid structure for menu.xml (missing closing </menu> tag)!")
+    lines = content.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() == "</menu>":
+            menu_item = '        <item view="' + n + '.list" title="msg://' + COMPANY + '.' + project_name + '.view.' + n.lower() + '/' + n.lower() + 'ListView.title"/>'
+            lines.insert(i, menu_item)
+            menu_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            logger.info("Menu injected successfully into menu.xml!")
+            return
+    logger.warning("⚠️ Invalid structure for menu.xml (missing closing </menu> tag)!")
 
 
 def generate_single_entity(name: str) -> None:
@@ -135,6 +137,7 @@ def generate_single_entity(name: str) -> None:
             traits_list=computed_traits_list,
             relations_list=relations_list,
         )
+        _update_menu(name)
         if not entity_exists:
             gen_liquibase_changelog_from_csv(name, fields_list, traits)
         if relations_list:
@@ -182,6 +185,7 @@ def generate_all_entities() -> None:
                     combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
                     new_content = "\n".join(non_user_lines + combined_user_lines) + "\n"
                     messages_file.write_text(new_content, encoding="utf-8")
+            _update_menu("User")
         else:
             traits = get_traits_from_csv("traits.csv", ent)
             fields_list = get_entities_from_csv("entities.csv", ent)
@@ -197,6 +201,7 @@ def generate_all_entities() -> None:
                 update_messages_entity(
                     ".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list
                 )
+                _update_menu(ent)
     from jmix_cli.cli.dry_run import _finalize_composition_relationships
     logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
     for ent in ordered_list:
