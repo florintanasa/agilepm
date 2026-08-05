@@ -325,7 +325,14 @@ def _get_relation_field_names(entity_name: str) -> set[str]:
             # Inverse field injected by _inject_composition_into_parent
             inv_field = entity_name[0].lower() + entity_name[1:]
             field_names.add(inv_field.upper())
-        # COMPOSITION_1:N and N:N generate List<T> fields, already skipped
+        elif rel_type == "COMPOSITION_1:N":
+            # The @ManyToOne back-reference (mappedBy) is injected into the
+            # SOURCE entity by _inject_composition_into_parent. Its field name
+            # is the target entity in camelCase (e.g., target "Project" → "project").
+            tgt_class = rel["target"]
+            mapped_by_prop = tgt_class[0].lower() + tgt_class[1:]
+            field_names.add(mapped_by_prop.upper())
+        # N:N generates List<T> fields, already skipped
 
     # Also check relations where entity is the TARGET of COMPOSITION_1:1
     for rel in _read_all_relations():

@@ -331,7 +331,10 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                 if f"private {tgt_class} {mapped_by_prop};" not in java_src_content:
                     logger.info(f" 🔗 Injecting @ManyToOne back-reference ({tgt_class}) into child: {src_class}")
                     sql_fk_col = f"{mapped_by_prop.upper()}_ID"
-                    n1_field = f'    @ManyToOne(fetch = FetchType.LAZY)\n    @JoinColumn(name = "{sql_fk_col}")\n    private {tgt_class} {mapped_by_prop};\n\n'
+                    mandatory_val = rel.get("mandatory", False)
+                    not_null_anno = "    @NotNull\n" if mandatory_val else ""
+                    nullable_attr = ", nullable = false" if mandatory_val else ""
+                    n1_field = f'    @ManyToOne(fetch = FetchType.LAZY)\n    @JoinColumn(name = "{sql_fk_col}"{nullable_attr})\n{not_null_anno}    private {tgt_class} {mapped_by_prop};\n\n'
                     n1_caps = mapped_by_prop[0].upper() + mapped_by_prop[1:]
                     n1_methods = f"    public {tgt_class} get{n1_caps}() {{\n        return {mapped_by_prop};\n    }}\n\n"
                     n1_methods += f"    public void set{n1_caps}({tgt_class} {mapped_by_prop}) {{\n        this.{mapped_by_prop} = {mapped_by_prop};\n    }}\n\n"
@@ -346,6 +349,8 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                         java_src_content = inject_import_if_missing(java_src_content, "jakarta.persistence.ManyToOne")
                         java_src_content = inject_import_if_missing(java_src_content, "jakarta.persistence.JoinColumn")
                         java_src_content = inject_import_if_missing(java_src_content, "jakarta.persistence.FetchType")
+                        if mandatory_val:
+                            java_src_content = inject_import_if_missing(java_src_content, "jakarta.validation.constraints.NotNull")
                         src_file_path.write_text(java_src_content, encoding="utf-8")
 
             # Generate Liquibase FK changelog for child N:1 back-reference (if missing)
