@@ -390,6 +390,14 @@ def _inject_composition_ui_into_parent(
         readable_en = f_name.capitalize()
         properties_base = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
 
+        _iso_lang_names = {
+            "ar": "Arabic", "ckb": "Central Kurdish", "de": "German",
+            "el": "Greek", "es": "Spanish", "fr": "French",
+            "it": "Italian", "nl": "Dutch", "pt": "Brazilian Portuguese",
+            "ro": "Romanian", "ru": "Russian", "tr": "Turkish",
+            "zh": "Simplified Chinese",
+        }
+
         locales = ["en"]
         app_props = PROIECT_PATH / "src" / "main" / "resources" / "application.properties"
         if app_props.exists():
@@ -403,8 +411,10 @@ def _inject_composition_ui_into_parent(
             if locale == "en":
                 msg_value = readable_en
             else:
+                _primary_iso = locale.split("_")[0].lower()
+                _lang_name = _iso_lang_names.get(_primary_iso, locale)
                 try:
-                    _translated = ask_ollama_translation(readable_en, locale)
+                    _translated = ask_ollama_translation(readable_en, _lang_name)
                     msg_value = _translated if _translated else readable_en
                 except Exception:
                     msg_value = readable_en
@@ -418,6 +428,7 @@ def _inject_composition_ui_into_parent(
                 ]
             else:
                 _files = [str(properties_base / f"messages_{locale}.properties")]
+
 
             for _pf in _files:
                 append_unique(_pf, [msg_line])
