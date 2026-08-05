@@ -129,6 +129,59 @@ def gen_detail_view_from_csv(
             xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
             xml_form_components += "                </actions>\n"
             xml_form_components += "            </multiSelectComboBoxPicker>\n"
+        elif rel["type"] == "COMPOSITION_1:N":
+            f_name = rel["field"]
+            parent_class = rel["target"]
+            parent_lower = parent_class.lower()
+
+            parent_view_path = (
+                PROIECT_PATH
+                / "src" / "main" / "resources"
+                / company_path / project_name / "view"
+                / parent_lower / f"{parent_lower}-detail-view.xml"
+            )
+            if parent_view_path.exists():
+                parent_xml = parent_view_path.read_text(encoding="utf-8")
+                grid_id = f"{f_name}DataGrid"
+                if f'id="{grid_id}"' not in parent_xml:
+                    container_block = f'    <collection id="{f_name}Dc" property="{f_name}"/>\n'
+                    if f'id="{parent_lower}Dc"' in parent_xml and "</instance>" in parent_xml:
+                        parent_xml = parent_xml.replace(
+                            "</instance>", f"{container_block}        </instance>"
+                        )
+
+                    child_fields = get_entities_from_csv("entities.csv", name)
+                    columns = ""
+                    if child_fields:
+                        for c_field in child_fields:
+                            columns += f'                <column property="{c_field["name"]}"/>\n'
+                    else:
+                        columns = '                <column property="id"/>\n'
+
+                    composition_grid = (
+                        f'        <h3 text="msg://{parent_lower}DetailView.{f_name}"/>\n'
+                    )
+                    composition_grid += f'        <hbox id="{f_name}ButtonsPanel" classNames="buttons-panel">\n'
+                    composition_grid += f'            <button id="{f_name}CreateBtn" action="{grid_id}.create"/>\n'
+                    composition_grid += f'            <button id="{f_name}EditBtn" action="{grid_id}.edit"/>\n'
+                    composition_grid += f'            <button id="{f_name}RemoveBtn" action="{grid_id}.remove"/>\n'
+                    composition_grid += "        </hbox>\n"
+                    composition_grid += f'        <dataGrid id="{grid_id}" width="100%" minHeight="15em" dataContainer="{f_name}Dc">\n'
+                    composition_grid += "            <actions>\n"
+                    composition_grid += '                <action id="create" type="list_create"/>\n'
+                    composition_grid += '                <action id="edit" type="list_edit"/>\n'
+                    composition_grid += '                <action id="remove" type="list_remove"/>\n'
+                    composition_grid += "            </actions>\n"
+                    composition_grid += "            <columns>\n"
+                    composition_grid += columns
+                    composition_grid += "            </columns>\n"
+                    composition_grid += "        </dataGrid>\n"
+
+                    if "</formLayout>" in parent_xml:
+                        parent_xml = parent_xml.replace(
+                            "</formLayout>", f"</formLayout>\n{composition_grid}"
+                        )
+                    parent_view_path.write_text(parent_xml, encoding="utf-8")
 
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
