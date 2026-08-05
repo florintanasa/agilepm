@@ -143,7 +143,7 @@ def inject_composition_1n(name: str, rel: dict[str, str]) -> None:
             + new_methods
             + java_tgt_content[last_brace_index:]
         )
-    tgt_file_path.write_text(java_tgt_content, encoding="utf-8)
+    tgt_file_path.write_text(java_tgt_content, encoding="utf-8")
 
 
 def _update_mandatory_annotations(
@@ -180,7 +180,7 @@ def _update_mandatory_annotations(
     elif not mandatory_val and old_with_notnull in java_src_content:
         java_src_content = java_src_content.replace(old_with_notnull, new_no_notnull, 1)
         _generate_nullable_changelog(src_file_path, tgt_class, mapped_by_prop, sql_fk_col, False)
-    src_file_path.write_text(java_src_content, encoding="utf-8)
+        src_file_path.write_text(java_src_content, encoding="utf-8")
 
 
 def _generate_nullable_changelog(

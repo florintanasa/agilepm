@@ -25,7 +25,7 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli import main
+from jmix_cli.cli.main import main
 
 if __name__ == "__main__":
     main()

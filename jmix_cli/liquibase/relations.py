@@ -31,6 +31,7 @@ from typing import Any
 from jmix_cli.core.files import ensure_dir, write_file
 from jmix_cli.core.project import COMPANY, PROIECT_PATH, company_path, project_name
 from jmix_cli.core.logger import get_logger
+from jmix_cli.liquibase.base import _stable_changeset_id
 
 logger = get_logger("jmix_cli.liquibase")
 
