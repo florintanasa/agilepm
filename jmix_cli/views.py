@@ -348,6 +348,7 @@ def _inject_composition_ui_into_parent(
         tgt_lower = tgt_class.lower()
         f_name = rel["field"]
         src_class = name
+        mapped_by_prop = tgt_class[0].lower() + tgt_class[1:]
 
         # Always update message keys for the composition DataGrid section title
         # (must be BEFORE the 'DataGrid already exists' continue check, so that
@@ -457,6 +458,69 @@ def _inject_composition_ui_into_parent(
                 "</formLayout>", f"</formLayout>\n{composition_grid}"
             )
         write_file(tgt_xml_path, xml_tgt_content)
+
+        # --- Inject entityComboBox for @ManyToOne back-reference into CHILD view ---
+        # The COMPOSITION_1:N back-reference (@ManyToOne in the child entity) needs
+        # an entityComboBox in the child's own detail view, just like an N:1 relation
+        # would have. Without an explicit N:1 row in relations.csv for the child,
+        # gen_detail_view_from_csv does not generate this component.
+        child_xml_path = (
+            PROIECT_PATH
+            / "src"
+            / "main"
+            / "resources"
+            / company_path
+            / project_name
+            / "view"
+            / src_class.lower()
+            / f"{src_class.lower()}-detail-view.xml"
+        )
+        if child_xml_path.exists():
+            child_xml_content = child_xml_path.read_text(encoding="utf-8")
+            tgt_lower_for_combo = tgt_class.lower()
+            # Build the <collection> + <entityComboBox> block
+            child_collection = (
+                f'        <collection id="{tgt_lower_for_combo}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
+            )
+            child_collection += '            <fetchPlan extends="_base"/>\n'
+            child_collection += f'            <loader id="{tgt_lower_for_combo}sDl">\n'
+            child_collection += "                <query>\n"
+            child_collection += f'                   <![CDATA[select e from {tgt_class} e]]>\n'
+            child_collection += "                </query>\n"
+            child_collection += "            </loader>\n"
+            child_collection += "        </collection>\n"
+
+            child_combo = (
+                f'            <entityComboBox id="{mapped_by_prop}Field" '
+                f'property="{mapped_by_prop}" itemsContainer="{tgt_lower_for_combo}sDc">\n'
+            )
+            child_combo += "                <actions>\n"
+            child_combo += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            child_combo += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+            child_combo += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+            child_combo += "                </actions>\n"
+            child_combo += "            </entityComboBox>\n"
+
+            # Inject <collection> as a sibling to <instance> (inside <data>)
+            # NOT inside <instance> — a <collection> inside <instance> requires
+            # a 'property' attribute, but this is a standalone lookup collection.
+            if f'id="{tgt_lower_for_combo}sDc"' not in child_xml_content:
+                if "</instance>" in child_xml_content:
+                    child_xml_content = child_xml_content.replace(
+                        "</instance>", f"</instance>\n{child_collection}"
+                    )
+
+            # Inject entityComboBox into child's <formLayout> if missing
+            if f'id="{mapped_by_prop}Field"' not in child_xml_content:
+                _form_match = _re.search(r'(\s*)</formLayout>', child_xml_content)
+                if _form_match:
+                    _form_indent = _form_match.group(1)
+                    child_xml_content = child_xml_content.replace(
+                        _form_indent + "</formLayout>",
+                        f"\n{child_combo}{_form_indent}</formLayout>"
+                    )
+
+            write_file(child_xml_path, child_xml_content)
 
 
 def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]], fields_list: list[dict[str, Any]] | None = None) -> None:

@@ -308,6 +308,97 @@ def _build_relation_fields_and_methods(relations_list: list[dict[str, Any]], nam
     return java_relation_fields, java_relation_methods, dinamic_imports
 
 
+def _update_mandatory_annotations(
+    src_file_path: "Path", java_src_content: str, tgt_class: str,
+    mapped_by_prop: str, sql_fk_col: str, mandatory_val: bool
+) -> None:
+    """Update @NotNull / nullable=false on an existing @ManyToOne back-reference
+    when the mandatory flag in relations.csv has changed."""
+    old_no_notnull = (
+        f'    @ManyToOne(fetch = FetchType.LAZY)\n'
+        f'    @JoinColumn(name = "{sql_fk_col}")\n'
+        f'    private {tgt_class} {mapped_by_prop};'
+    )
+    new_with_notnull = (
+        f'    @ManyToOne(fetch = FetchType.LAZY)\n'
+        f'    @JoinColumn(name = "{sql_fk_col}", nullable = false)\n'
+        f'    @NotNull\n'
+        f'    private {tgt_class} {mapped_by_prop};'
+    )
+    old_with_notnull = (
+        f'    @ManyToOne(fetch = FetchType.LAZY)\n'
+        f'    @JoinColumn(name = "{sql_fk_col}", nullable = false)\n'
+        f'    @NotNull\n'
+        f'    private {tgt_class} {mapped_by_prop};'
+    )
+    new_no_notnull = (
+        f'    @ManyToOne(fetch = FetchType.LAZY)\n'
+        f'    @JoinColumn(name = "{sql_fk_col}")\n'
+        f'    private {tgt_class} {mapped_by_prop};'
+    )
+
+    if mandatory_val and old_no_notnull in java_src_content:
+        logger.info(f" 🔗 Updating {src_file_path.name}: mandatory=true (adding @NotNull + nullable=false)")
+        java_src_content = java_src_content.replace(old_no_notnull, new_with_notnull, 1)
+        java_src_content = inject_import_if_missing(java_src_content, "jakarta.validation.constraints.NotNull")
+        src_file_path.write_text(java_src_content, encoding="utf-8")
+        _generate_nullable_changelog(src_file_path, tgt_class, mapped_by_prop, sql_fk_col, True)
+    elif not mandatory_val and old_with_notnull in java_src_content:
+        logger.info(f" 🔗 Updating {src_file_path.name}: mandatory=false (removing @NotNull + nullable=false)")
+        java_src_content = java_src_content.replace(old_with_notnull, new_no_notnull, 1)
+        src_file_path.write_text(java_src_content, encoding="utf-8")
+        _generate_nullable_changelog(src_file_path, tgt_class, mapped_by_prop, sql_fk_col, False)
+
+
+def _generate_nullable_changelog(
+    src_file_path: "Path", tgt_class: str, mapped_by_prop: str,
+    sql_fk_col: str, make_not_null: bool,
+) -> None:
+    """Generate a stable Liquibase changelog to add or drop a NOT NULL constraint
+    on the FK column of a COMPOSITION_1:N back-reference."""
+    from datetime import datetime
+    src_table = "USER_" if src_file_path.stem == "User" else src_file_path.stem.upper()
+    if make_not_null:
+        change_tag = "addNotNull"
+        change_xml = (
+            f'        <addNotNullConstraint tableName="{src_table}" '
+            f'columnName="{sql_fk_col}"/>\n'
+        )
+    else:
+        change_tag = "dropNotNull"
+        change_xml = (
+            f'        <dropNotNullConstraint tableName="{src_table}" '
+            f'columnName="{sql_fk_col}"/>\n'
+        )
+    changeset_id = f"{src_table.lower()}-{sql_fk_col}-{change_tag}-nullable"
+    year = datetime.now().strftime("%Y")
+    month = datetime.now().strftime("%m")
+    fk_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog" / year / month
+    fk_dir.mkdir(parents=True, exist_ok=True)
+    # Check if this changeset already exists (same change_tag for same table+column)
+    for existing in fk_dir.glob(f"*{change_tag}*{src_table.lower()}*.xml"):
+        if changeset_id in existing.read_text(encoding="utf-8"):
+            logger.info(f" 🔗 Nullable constraint changeset already exists for {src_table}.{sql_fk_col}, skipping")
+            return
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    changelog_file = fk_dir / f"{timestamp}-04-{change_tag}-{src_table.lower()}.xml"
+    changelog_content = f"""<?xml version="1.0" encoding="UTF-8" ?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+    objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS"
+>
+    <changeSet id="{changeset_id}" author="{project_name}">
+{change_xml}    </changeSet>
+</databaseChangeLog>
+"""
+    changelog_file.write_text(changelog_content, encoding="utf-8")
+    logger.info(f" 🔗 Added nullable constraint changelog: {changelog_file}")
+
+
 def _inject_composition_into_parent(name: str, relations_list: list[dict[str, Any]]) -> None:
     for rel in relations_list:
         if not rel["type"].startswith("COMPOSITION_"):
@@ -328,10 +419,10 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
             src_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{src_class}.java"
             if src_file_path.exists():
                 java_src_content = src_file_path.read_text(encoding="utf-8")
+                sql_fk_col = f"{mapped_by_prop.upper()}_ID"
+                mandatory_val = rel.get("mandatory", False)
                 if f"private {tgt_class} {mapped_by_prop};" not in java_src_content:
                     logger.info(f" 🔗 Injecting @ManyToOne back-reference ({tgt_class}) into child: {src_class}")
-                    sql_fk_col = f"{mapped_by_prop.upper()}_ID"
-                    mandatory_val = rel.get("mandatory", False)
                     not_null_anno = "    @NotNull\n" if mandatory_val else ""
                     nullable_attr = ", nullable = false" if mandatory_val else ""
                     n1_field = f'    @ManyToOne(fetch = FetchType.LAZY)\n    @JoinColumn(name = "{sql_fk_col}"{nullable_attr})\n{not_null_anno}    private {tgt_class} {mapped_by_prop};\n\n'
@@ -352,6 +443,9 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                         if mandatory_val:
                             java_src_content = inject_import_if_missing(java_src_content, "jakarta.validation.constraints.NotNull")
                         src_file_path.write_text(java_src_content, encoding="utf-8")
+                else:
+                    # Field already exists — check if mandatory flag changed
+                    _update_mandatory_annotations(src_file_path, java_src_content, tgt_class, mapped_by_prop, sql_fk_col, mandatory_val)
 
             # Generate Liquibase FK changelog for child N:1 back-reference (if missing)
             src_table = "USER_" if src_class == "User" else src_class.upper()
