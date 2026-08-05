@@ -24,7 +24,35 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.cli.commands.entity import generate_all_entities
+from jmix_cli.cli.commands.ui import generate_all_list_views, generate_all_detail_views
+from jmix_cli.cli.commands.security import run_security
+from jmix_cli.cli.dry_run import inject_audit_dependencies, update_checkbox_required_state_property
 
-if __name__ == "__main__":
-    main()
+
+def run_build_all(dry_run: bool = False) -> None:
+    from jmix_cli.cli.dry_run import _copy_project_to_temp, _patch_globals_for_dry_run, _finish_dry_run
+    from pathlib import Path
+    import sys
+    import os
+
+    dry_run_temp_dir = None
+    original_dir = Path.cwd()
+
+    try:
+        if dry_run:
+            if len(sys.argv) == 1:
+                raise ValueError("--dry-run needs a command.")
+            dry_run_temp_dir = _copy_project_to_temp()
+            os.chdir(dry_run_temp_dir)
+            _patch_globals_for_dry_run(dry_run_temp_dir)
+
+        inject_audit_dependencies()
+        generate_all_entities()
+        generate_all_list_views()
+        generate_all_detail_views()
+        run_security()
+        update_checkbox_required_state_property()
+    finally:
+        if dry_run and dry_run_temp_dir is not None:
+            _finish_dry_run(dry_run_temp_dir, original_dir)

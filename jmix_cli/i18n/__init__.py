@@ -24,7 +24,7 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.i18n.messages import update_messages_entity
+from jmix_cli.i18n.translator import ask_ollama_translation
 
-if __name__ == "__main__":
-    main()
+__all__ = ["ask_ollama_translation", "update_messages_entity"]

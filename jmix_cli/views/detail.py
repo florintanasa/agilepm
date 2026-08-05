@@ -1,0 +1,180 @@
+# -
+# Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+# IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# -
+
+from pathlib import Path
+from typing import Any
+
+from jmix_cli.core.project import COMPANY, PROIECT_PATH, company_path, project_name
+from jmix_cli.core.files import write_file
+from jmix_cli.entity import get_entities_from_csv
+
+
+_FIELD_TYPE_TO_DATATYPE = {
+    "int": "int",
+    "integer": "int",
+    "long": "long",
+    "double": "double",
+    "bigdecimal": "decimal",
+    "decimal": "decimal",
+    "float": "decimal",
+    "short": "int",
+    "biginteger": "decimal",
+}
+
+
+def _java_type_to_datatype(f_type: str) -> str | None:
+    return _FIELD_TYPE_TO_DATATYPE.get(f_type.lower())
+
+
+def gen_detail_view_from_csv(
+    name: str, fields_list: list[dict[str, Any]], relations_list: list[dict[str, Any]] = []
+) -> None:
+    lower_name = name.lower()
+
+    xml_form_components = ""
+    for field in fields_list:
+        f_name = field["name"]
+        f_type = field["type"].lower()
+        if f_type in ["boolean", "bool"]:
+            xml_form_components += (
+                f'            <checkbox id="{f_name}Field" property="{f_name}"/>\n'
+            )
+        elif f_type in ["date", "localdate", "datetime", "localdatetime"]:
+            xml_form_components += (
+                f'            <datePicker id="{f_name}Field" property="{f_name}"/>\n'
+            )
+        else:
+            dt = _java_type_to_datatype(f_type)
+            if dt:
+                xml_form_components += (
+                    f'            <textField id="{f_name}Field" property="{f_name}" datatype="{dt}"/>\n'
+                )
+            else:
+                xml_form_components += (
+                    f'            <textField id="{f_name}Field" property="{f_name}"/>\n'
+                )
+
+    xml_relation_data_containers = ""
+    for rel in relations_list:
+        if (
+            rel["type"] == "N:1"
+            or rel["type"] == "1:1"
+            or rel["type"] == "COMPOSITION_1:1"
+        ):
+            f_name = rel["field"]
+            tgt_class = rel["target"]
+            tgt_lower = tgt_class.lower()
+            xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
+            xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
+            xml_relation_data_containers += (
+                f'            <loader id="{tgt_lower}sDl">\n'
+            )
+            xml_relation_data_containers += "                <query>\n"
+            xml_relation_data_containers += (
+                f"                   <![CDATA[select e from {tgt_class} e]]>\n"
+            )
+            xml_relation_data_containers += "                </query>\n"
+            xml_relation_data_containers += "            </loader>\n"
+            xml_relation_data_containers += "        </collection>\n"
+            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
+            xml_form_components += "                <actions>\n"
+            xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+            xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+            xml_form_components += "                </actions>\n"
+            xml_form_components += "            </entityComboBox>\n"
+        elif rel["type"] == "N:N":
+            f_name = rel["field"]
+            tgt_class = rel["target"]
+            tgt_lower = tgt_class.lower()
+            xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
+            xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
+            xml_relation_data_containers += (
+                f'            <loader id="{tgt_lower}sDl">\n'
+            )
+            xml_relation_data_containers += "                <query>\n"
+            xml_relation_data_containers += (
+                f"                   <![CDATA[select e from {tgt_class} e]]>\n"
+            )
+            xml_relation_data_containers += "                </query>\n"
+            xml_relation_data_containers += "            </loader>\n"
+            xml_relation_data_containers += "        </collection>\n"
+            xml_form_components += f'            <multiSelectComboBoxPicker id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
+            xml_form_components += "                <actions>\n"
+            xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+            xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+            xml_form_components += "                </actions>\n"
+            xml_form_components += "            </multiSelectComboBoxPicker>\n"
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="msg://{lower_name}DetailView.title"
+      focusComponent="form">
+    <data>
+    	<instance id="{lower_name}Dc"
+                    class="{COMPANY}.{project_name}.entity.{name}">
+            <fetchPlan extends="_base"/>
+            <loader id="{lower_name}Dl"/>
+        </instance>
+{xml_relation_data_containers}    </data>
+    <facets>
+        <dataLoadCoordinator auto="true"/>
+    </facets>
+    <actions>
+        <action id="saveAction" type="detail_saveClose"/>
+        <action id="closeAction" type="detail_close"/>
+    </actions>
+    <layout classNames="fluid-layout" width="100%">
+        <formLayout id="form" dataContainer="{lower_name}Dc">
+{xml_form_components}        </formLayout>
+        <hbox id="detailActions">
+            <button id="saveAndCloseBtn" action="saveAction"/>
+            <button id="closeBtn" action="closeAction"/>
+        </hbox>
+    </layout>
+</view>
+"""
+
+    java_content = f"""package {COMPANY}.{project_name}.view.{lower_name};
+
+import {COMPANY}.{project_name}.entity.{name};
+import {COMPANY}.{project_name}.view.main.MainView;
+import com.vaadin.flow.router.Route;
+import io.jmix.flowui.view.*;
+
+@Route(value = "{lower_name}s/:id", layout = MainView.class)
+@ViewController("{name}.detail")
+@ViewDescriptor("{lower_name}-detail-view.xml")
+@EditedEntityContainer("{lower_name}Dc")
+public class {name}DetailView extends StandardDetailView<{name}> {{
+}}
+"""
+
+    view_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "view" / lower_name
+    java_dir = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "view" / lower_name
+    write_file(view_dir / f"{lower_name}-detail-view.xml", xml_content)
+    write_file(java_dir / f"{name}DetailView.java", java_content)

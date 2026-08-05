@@ -24,7 +24,13 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.migrate import migrate_entity, migrate_all_entities
+from jmix_cli.entity import get_sorted_entities_by_dependency
 
-if __name__ == "__main__":
-    main()
+
+def run_migrate(entity_name: str, mode: str = "prompt") -> None:
+    migrate_entity(entity_name, mode)
+
+
+def run_migrate_all(mode: str = "prompt") -> None:
+    migrate_all_entities(mode)

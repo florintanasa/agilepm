@@ -24,7 +24,6 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.user.relations import inject_relations_into_existing_user
 
-if __name__ == "__main__":
-    main()
+__all__ = ["inject_relations_into_existing_user"]

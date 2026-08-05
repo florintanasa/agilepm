@@ -24,7 +24,8 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.security import gen_jmix_resource_roles_from_csv
 
-if __name__ == "__main__":
-    main()
+
+def run_security() -> None:
+    gen_jmix_resource_roles_from_csv()

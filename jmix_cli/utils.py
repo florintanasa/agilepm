@@ -24,191 +24,175 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-import csv
-import logging
-import os
-import re
-import sys
-from pathlib import Path
+import functools
 
-from jmix_cli.exceptions import InvalidCsvError
-
-PROIECT_PATH = Path.cwd()
-
-
-def get_logger(name: str) -> logging.Logger:
-    logger = logging.getLogger(name)
-    if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter("[%(levelname)s] %(message)s")
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    return logger
-
-
-def get_project_name(settings_path: Path = Path("settings.gradle")) -> str | None:
-    if not settings_path.exists():
-        return None
-    text = settings_path.read_text(encoding="utf-8")
-    m = re.search(r"""rootProject\.name\s*=\s*(['"])(.*?)\1""", text)
-    return m.group(2) if m else None
-
-
-def get_company_name(build_path: Path = Path("build.gradle")) -> str | None:
-    if not build_path.exists():
-        return None
-    text = build_path.read_text(encoding="utf-8")
-    m = re.search(r"""group\s*=\s*(['"])(.*?)\1""", text)
-    return m.group(2) if m else None
-
-
-PROJECT = get_project_name()
-project_name = (PROJECT or "").lower()
-COMPANY = get_company_name() or ""
-company_path = COMPANY.replace(".", "/")
-
-
-def to_camel_case_lower(text: str) -> str:
-    if not text:
-        return ""
-    text_clean = text.strip()
-    return text_clean[0].lower() + text_clean[1:]
-
-
-def inject_import_if_missing(java_content: str, import_class: str) -> str:
-    full_import = f"import {import_class};"
-    if full_import in java_content:
-        return java_content
-    return java_content.replace(
-        f"package {COMPANY}.{project_name}.entity;",
-        f"package {COMPANY}.{project_name}.entity;\n{full_import}",
-    )
+from jmix_cli.core.config import get_ollama_config, get_ollama_endpoint, get_ollama_model
+from jmix_cli.core.constants import ISO_LANG_NAMES, JMIX_TRANSLATIONS_MAP
+from jmix_cli.core.csv import validate_csv_path
+from jmix_cli.core.files import (
+    append_unique,
+    ensure_dir,
+    replace_entity_messages,
+    update_checkbox_required_state_property,
+    write_file,
+)
+from jmix_cli.core.java import inject_import_if_missing, to_camel_case_lower
+from jmix_cli.core.logger import get_logger
+from jmix_cli.core.project import (
+    COMPANY,
+    PROIECT_PATH,
+    PROJECT,
+    company_path,
+    get_company_name,
+    get_project_name,
+    project_name,
+)
+from jmix_cli.i18n import ask_ollama_translation, update_messages_entity
+from jmix_cli.entity import (
+    get_entities_from_csv,
+    get_traits_from_csv,
+    get_relations_from_csv,
+    get_sorted_entities_by_dependency,
+    has_existing_entity_and_changelog,
+    gen_entity_mechanic_from_csv,
+    _inject_composition_into_parent,
+)
+from jmix_cli.views import (
+    gen_list_view_from_csv,
+    gen_detail_view_from_csv,
+    inject_composition_ui_into_parent,
+    inject_list_ui_into_existing_user,
+    inject_detail_ui_into_existing_user,
+    inject_nn_grid_into_inverse_entity,
+    inject_nn_datagrid_into_source_entity,
+)
+from jmix_cli.liquibase import (
+    gen_liquibase_changelog_from_csv,
+    gen_liquibase_relations_changelog,
+    map_type,
+)
+from jmix_cli.security import gen_jmix_resource_roles_from_csv
+from jmix_cli.user import inject_relations_into_existing_user
 
 
-def validate_csv_path(csv_path: str, required_columns: list[str]) -> list[dict]:
-    if not os.path.exists(csv_path):
-        raise InvalidCsvError(csv_path)
-    with open(csv_path, mode="r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None:
-            raise InvalidCsvError(csv_path, message=f"CSV file is empty: {csv_path}")
-        missing = set(required_columns) - set(reader.fieldnames)
-        if missing:
-            raise InvalidCsvError(csv_path, missing_columns=sorted(list(missing)))
-        return list(reader)
+def _get_migrate_module():
+    import jmix_cli.migrate as _migrate
+    return _migrate
 
 
-def ensure_dir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
+def _lazy_class(name):
+    def _wrapper(*args, **kwargs):
+        mod = _get_migrate_module()
+        real_cls = getattr(mod, name)
+        return real_cls(*args, **kwargs)
+    _wrapper.__name__ = name
+    _wrapper.__qualname__ = name
+    return _wrapper
 
 
-def write_file(path: str | Path, content: str) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
-        f.write(content)
+def _lazy_func(name):
+    def _wrapper(*args, **kwargs):
+        mod = _get_migrate_module()
+        real_fn = getattr(mod, name)
+        return real_fn(*args, **kwargs)
+    _wrapper.__name__ = name
+    _wrapper.__qualname__ = name
+    return _wrapper
 
 
-def replace_entity_messages(file_path: str, base_package: str, entity_name: str, new_lines: list[str]) -> None:
-    p = Path(file_path)
-    existing_lines = []
-    if p.exists():
-        existing_lines = p.read_text(encoding="utf-8").splitlines()
-
-    prefix = f"{base_package}.entity/{entity_name}"
-    new_keys = {}
-    for line in new_lines:
-        if "=" in line:
-            key = line.split("=")[0].strip()
-            new_keys[key] = line
-
-    result = []
-    seen_keys = set()
-    first_entity_idx = None
-    last_entity_idx = None
-    for i, line in enumerate(existing_lines):
-        if line.startswith(prefix + ".") or line.startswith(prefix + "="):
-            key = line.split("=")[0].strip()
-            if first_entity_idx is None:
-                first_entity_idx = i
-            if key in new_keys:
-                result.append(new_keys[key])
-                seen_keys.add(key)
-                last_entity_idx = len(result) - 1
-            else:
-                continue
-        else:
-            result.append(line)
-
-    for key, line in new_keys.items():
-        if key not in seen_keys:
-            if last_entity_idx is not None:
-                result.insert(last_entity_idx + 1, line)
-                last_entity_idx += 1
-            else:
-                result.append(line)
-
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("\n".join(result) + "\n", encoding="utf-8")
+migrate_entity = _lazy_func("migrate_entity")
+migrate_all_entities = _lazy_func("migrate_all_entities")
+HSQLDBAdapter = _lazy_class("HSQLDBAdapter")
+get_existing_columns_from_changelogs = _lazy_func("get_existing_columns_from_changelogs")
+detect_changed_fields = _lazy_func("detect_changed_fields")
+detect_dropped_columns = _lazy_func("detect_dropped_columns")
+detect_field_metadata_changes = _lazy_func("detect_field_metadata_changes")
+detect_missing_columns = _lazy_func("detect_missing_columns")
+detect_missing_relations = _lazy_func("detect_missing_relations")
+detect_relation_metadata_changes = _lazy_func("detect_relation_metadata_changes")
+get_table_name = _lazy_func("get_table_name")
+map_type_to_sql = _lazy_func("map_type_to_sql")
+gen_add_column_changelog = _lazy_func("gen_add_column_changelog")
+gen_drop_column_changelog = _lazy_func("gen_drop_column_changelog")
+gen_modify_column_changelog = _lazy_func("gen_modify_column_changelog")
+gen_rename_column_changelog = _lazy_func("gen_rename_column_changelog")
+_add_import_after = _lazy_func("_add_import_after")
+_append_index_entry = _lazy_func("_append_index_entry")
+_remove_fields_from_java = _lazy_func("_remove_fields_from_java")
+_remove_index_entry = _lazy_func("_remove_index_entry")
+_update_java_for_metadata_changes = _lazy_func("_update_java_for_metadata_changes")
+inject_new_fields_into_existing_entity = _lazy_func("inject_new_fields_into_existing_entity")
+DatabaseAdapter = _lazy_class("DatabaseAdapter")
+PostgreSQLAdapter = _lazy_class("PostgreSQLAdapter")
+get_executed_changelog_ids = _lazy_func("get_executed_changelog_ids")
 
 
-def append_unique(file_path: str, lines_to_add: list[str]) -> None:
-    existing_content = ""
-    if os.path.exists(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
-            existing_content = f.read()
-
-    with open(file_path, "a", encoding="utf-8") as f:
-        if existing_content and not existing_content.endswith("\n"):
-            f.write("\n")
-
-        header_written = False
-        for line in lines_to_add:
-            if "=" not in line:
-                continue
-            key = line.split("=")[0].strip()
-            if f"{key}=" not in existing_content:
-                if not header_written:
-                    f.write(
-                        f"\n# Automated localization properties bundle layout for entity: {key.split('/')[-1] if '/' in key else key}\n"
-                    )
-                    header_written = True
-                f.write(line + "\n")
-
-
-def update_checkbox_required_state_property() -> None:
-    csv_path = Path("entities.csv")
-    has_mandatory_boolean = False
-    if csv_path.exists():
-        with csv_path.open(encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row["field_type"].strip().lower() in ("boolean", "bool") and row["mandatory"].strip().lower() == "true":
-                    has_mandatory_boolean = True
-                    break
-
-    app_props_path = Path("src/main/resources/application.properties")
-    if not app_props_path.exists():
-        return
-
-    content = app_props_path.read_text(encoding="utf-8")
-    prop_line = "jmix.ui.component.checkbox-required-state-initialization-enabled=false\n"
-
-    if has_mandatory_boolean:
-        if "jmix.ui.component.checkbox.required-state-initialization-enabled" not in content:
-            content = content.replace(
-                "jmix.ui.composite-menu=true\n",
-                f"jmix.ui.composite-menu=true\n{prop_line}",
-            )
-            app_props_path.write_text(content, encoding="utf-8")
-    else:
-        lines = content.splitlines()
-        new_lines = [
-            line for line in lines
-            if not line.strip().startswith("jmix.ui.component.checkbox-required-state-initialization-enabled")
-            and not line.strip().startswith("jmix.ui.component.checkbox.required-state-initialization-enabled")
-        ]
-        new_content = "\n".join(new_lines)
-        if not new_content.endswith("\n"):
-            new_content += "\n"
-        app_props_path.write_text(new_content, encoding="utf-8")
+__all__ = [
+    "get_logger",
+    "get_project_name",
+    "get_company_name",
+    "PROIECT_PATH",
+    "PROJECT",
+    "project_name",
+    "COMPANY",
+    "company_path",
+    "to_camel_case_lower",
+    "inject_import_if_missing",
+    "validate_csv_path",
+    "ensure_dir",
+    "write_file",
+    "replace_entity_messages",
+    "append_unique",
+    "update_checkbox_required_state_property",
+    "ISO_LANG_NAMES",
+    "JMIX_TRANSLATIONS_MAP",
+    "get_ollama_config",
+    "get_ollama_endpoint",
+    "get_ollama_model",
+    "ask_ollama_translation",
+    "update_messages_entity",
+    "get_entities_from_csv",
+    "get_traits_from_csv",
+    "get_relations_from_csv",
+    "get_sorted_entities_by_dependency",
+    "has_existing_entity_and_changelog",
+    "gen_entity_mechanic_from_csv",
+    "_inject_composition_into_parent",
+    "gen_list_view_from_csv",
+    "gen_detail_view_from_csv",
+    "inject_composition_ui_into_parent",
+    "inject_list_ui_into_existing_user",
+    "inject_detail_ui_into_existing_user",
+    "inject_nn_grid_into_inverse_entity",
+    "inject_nn_datagrid_into_source_entity",
+    "gen_liquibase_changelog_from_csv",
+    "gen_liquibase_relations_changelog",
+    "map_type",
+    "gen_jmix_resource_roles_from_csv",
+    "inject_relations_into_existing_user",
+    "migrate_entity",
+    "migrate_all_entities",
+    "HSQLDBAdapter",
+    "get_existing_columns_from_changelogs",
+    "detect_changed_fields",
+    "detect_dropped_columns",
+    "detect_field_metadata_changes",
+    "detect_missing_columns",
+    "detect_missing_relations",
+    "detect_relation_metadata_changes",
+    "get_table_name",
+    "map_type_to_sql",
+    "gen_add_column_changelog",
+    "gen_drop_column_changelog",
+    "gen_modify_column_changelog",
+    "gen_rename_column_changelog",
+    "_add_import_after",
+    "_append_index_entry",
+    "_remove_fields_from_java",
+    "_remove_index_entry",
+    "_update_java_for_metadata_changes",
+    "inject_new_fields_into_existing_entity",
+    "DatabaseAdapter",
+    "PostgreSQLAdapter",
+    "get_executed_changelog_ids",
+]
