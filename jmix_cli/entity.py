@@ -315,39 +315,16 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
         tgt_class = rel["target"]
         f_name = rel["field"]
         src_class = name
-        tgt_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{tgt_class}.java"
-        if not tgt_file_path.exists():
-            continue
-        java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
-        if (
-            f"private List<{src_class}> {f_name};" in java_tgt_content
-            or f"private {src_class} {f_name};" in java_tgt_content
-        ):
-            continue
-
-        logger.info(f" 🔗 Injection of @Composition ({rel['type']}) into the class: {tgt_class}")
-        new_field = ""
-        new_methods = ""
-        f_caps = f_name[0].upper() + f_name[1:]
-        mapped_by_prop = "user" if tgt_class.lower() == "user" else tgt_class.lower() + tgt_class[1:]
 
         if rel["type"] == "COMPOSITION_1:N":
             first_char_lower = tgt_class[0].lower()
             remaining_chars = tgt_class[1:]
             mapped_by_prop = first_char_lower + remaining_chars
-            new_field = f'    @Composition\n    @OnDelete(DeletePolicy.CASCADE)\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
-            new_methods = f"    public List<{src_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
-            new_methods += f"    public void set{f_caps}(List<{src_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
-            if "import java.util.List;" not in java_tgt_content:
-                package_end_idx = java_tgt_content.find(";")
-                if package_end_idx != -1:
-                    java_tgt_content = (
-                        java_tgt_content[: package_end_idx + 1]
-                        + "\nimport java.util.List;"
-                        + java_tgt_content[package_end_idx + 1 :]
-                    )
 
-            # Inject @ManyToOne back-reference into child entity so mappedBy resolves
+            # Inject @ManyToOne back-reference into child entity SO mappedBy resolves.
+            # This MUST happen even when the parent (@Composition List field) already
+            # exists — the old code skipped everything via `continue` if the parent
+            # had the List, which left the @ManyToOne un-injected.
             src_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{src_class}.java"
             if src_file_path.exists():
                 java_src_content = src_file_path.read_text(encoding="utf-8")
@@ -389,6 +366,39 @@ def _inject_composition_into_parent(name: str, relations_list: list[dict[str, An
                     gen_liquibase_relations_changelog(src_class, synthetic_rel)
             except ImportError:
                 pass
+
+        # --- Parent (@Composition @OneToMany) injection ---
+        tgt_file_path = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{tgt_class}.java"
+        if not tgt_file_path.exists():
+            continue
+        java_tgt_content = tgt_file_path.read_text(encoding="utf-8")
+        if (
+            f"private List<{src_class}> {f_name};" in java_tgt_content
+            or f"private {src_class} {f_name};" in java_tgt_content
+        ):
+            continue
+
+        logger.info(f" 🔗 Injection of @Composition ({rel['type']}) into the class: {tgt_class}")
+        new_field = ""
+        new_methods = ""
+        f_caps = f_name[0].upper() + f_name[1:]
+        mapped_by_prop = "user" if tgt_class.lower() == "user" else tgt_class.lower() + tgt_class[1:]
+
+        if rel["type"] == "COMPOSITION_1:N":
+            first_char_lower = tgt_class[0].lower()
+            remaining_chars = tgt_class[1:]
+            mapped_by_prop = first_char_lower + remaining_chars
+            new_field = f'    @Composition\n    @OnDelete(DeletePolicy.CASCADE)\n    @OneToMany(mappedBy = "{mapped_by_prop}")\n    private List<{src_class}> {f_name};\n\n'
+            new_methods = f"    public List<{src_class}> get{f_caps}() {{\n        return {f_name};\n    }}\n\n"
+            new_methods += f"    public void set{f_caps}(List<{src_class}> {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+            if "import java.util.List;" not in java_tgt_content:
+                package_end_idx = java_tgt_content.find(";")
+                if package_end_idx != -1:
+                    java_tgt_content = (
+                        java_tgt_content[: package_end_idx + 1]
+                        + "\nimport java.util.List;"
+                        + java_tgt_content[package_end_idx + 1 :]
+                    )
 
         elif rel["type"] == "COMPOSITION_1:1":
             sql_fk_col = f"{f_name.upper()}_ID"
