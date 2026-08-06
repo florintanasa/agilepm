@@ -78,6 +78,7 @@ def gen_detail_view_from_csv(
                 )
 
     xml_relation_data_containers = ""
+    relation_properties = []
     for rel in relations_list:
         if (
             rel["type"] == "N:1"
@@ -87,6 +88,7 @@ def gen_detail_view_from_csv(
             f_name = rel["field"]
             tgt_class = rel["target"]
             tgt_lower = tgt_class.lower()
+            relation_properties.append(f_name)
             xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
             xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
             xml_relation_data_containers += (
@@ -110,6 +112,7 @@ def gen_detail_view_from_csv(
             f_name = rel["field"]
             tgt_class = rel["target"]
             tgt_lower = tgt_class.lower()
+            relation_properties.append(f_name)
             xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
             xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
             xml_relation_data_containers += (
@@ -183,6 +186,60 @@ def gen_detail_view_from_csv(
                         )
                     parent_view_path.write_text(parent_xml, encoding="utf-8")
 
+    inverse_composition_rels = []
+    inverse_composition_1n_fields = []
+    relations_csv_path = Path("relations.csv")
+    if relations_csv_path.exists():
+        import csv as _csv
+        with relations_csv_path.open(mode="r", encoding="utf-8") as _f:
+            _reader = _csv.DictReader(_f)
+            for _row in _reader:
+                if _row["target_entity"].strip().lower() == name.lower():
+                    r_type = _row["relation_type"].strip().upper()
+                    if r_type == "COMPOSITION_1:1":
+                        inverse_composition_rels.append({
+                            "type": _row["relation_type"].strip(),
+                            "target": _row["source_entity"].strip(),
+                            "field": _row["field_name"].strip(),
+                            "mandatory": _row["mandatory"].strip().lower() == "true",
+                        })
+                    elif r_type == "COMPOSITION_1:N":
+                        inverse_composition_1n_fields.append(_row["field_name"].strip())
+
+    for rel in inverse_composition_rels:
+        f_name = rel["field"]
+        tgt_class = rel["target"]
+        tgt_lower = tgt_class.lower()
+        relation_properties.append(f_name)
+        xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
+        xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
+        xml_relation_data_containers += (
+            f'            <loader id="{tgt_lower}sDl">\n'
+        )
+        xml_relation_data_containers += "                <query>\n"
+        xml_relation_data_containers += (
+            f"                   <![CDATA[select e from {tgt_class} e]]>\n"
+        )
+        xml_relation_data_containers += "                </query>\n"
+        xml_relation_data_containers += "            </loader>\n"
+        xml_relation_data_containers += "        </collection>\n"
+        xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
+        xml_form_components += "                <actions>\n"
+        xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+        xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+        xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+        xml_form_components += "                </actions>\n"
+        xml_form_components += "            </entityComboBox>\n"
+
+    relation_properties.extend(inverse_composition_1n_fields)
+
+    fetch_plan_props = ""
+    if relation_properties:
+        fetch_plan_props = "            <fetchPlan extends=\"_base\">\n"
+        for prop in relation_properties:
+            fetch_plan_props += f"                <property name=\"{prop}\" fetchPlan=\"_base\"/>\n"
+        fetch_plan_props += "            </fetchPlan>\n"
+
     xml_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
       title="msg://{lower_name}DetailView.title"
@@ -190,8 +247,7 @@ def gen_detail_view_from_csv(
     <data>
     	<instance id="{lower_name}Dc"
                     class="{COMPANY}.{project_name}.entity.{name}">
-            <fetchPlan extends="_base"/>
-            <loader id="{lower_name}Dl"/>
+{fetch_plan_props}            <loader id="{lower_name}Dl"/>
         </instance>
 {xml_relation_data_containers}    </data>
     <facets>
