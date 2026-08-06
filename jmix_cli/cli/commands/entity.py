@@ -49,6 +49,28 @@ from jmix_cli.user import inject_relations_into_existing_user
 logger = get_logger("jmix_cli.cli.commands.entity")
 
 
+def _get_inverse_composition_relations(entity_name: str) -> list[dict[str, Any]]:
+    relations_csv_path = Path("relations.csv")
+    inverse_rels: list[dict[str, Any]] = []
+    if not relations_csv_path.exists():
+        return inverse_rels
+    with relations_csv_path.open(mode="r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["target_entity"].strip().lower() == entity_name.lower():
+                r_type = row["relation_type"].strip().upper()
+                if r_type == "COMPOSITION_1:1":
+                    src_class = row["source_entity"].strip()
+                    inv_field_name = src_class[0].lower() + src_class[1:]
+                    inverse_rels.append({
+                        "type": row["relation_type"].strip(),
+                        "target": src_class,
+                        "field": inv_field_name,
+                        "mandatory": row["mandatory"].strip().lower() == "true",
+                    })
+    return inverse_rels
+
+
 def _update_menu(n: str) -> None:
     logger.info("Updating menu.xml for " + n + "...")
     menu_path = (
@@ -156,6 +178,8 @@ def generate_all_entities() -> None:
             if relations_list:
                 gen_liquibase_relations_changelog("User", relations_list)
                 inject_relations_into_existing_user("User", relations_list)
+                inverse_user_rels = _get_inverse_composition_relations("User")
+                relations_list = relations_list + inverse_user_rels
                 from jmix_cli.i18n import ask_ollama_translation
                 resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
                 messages_files = list(resources_path.glob("messages*.properties"))
@@ -196,6 +220,8 @@ def generate_all_entities() -> None:
             traits = get_traits_from_csv("traits.csv", ent)
             fields_list = get_entities_from_csv("entities.csv", ent)
             relations_list = get_relations_from_csv("relations.csv", ent)
+            inverse_rels = _get_inverse_composition_relations(ent)
+            relations_list = relations_list + inverse_rels
             if fields_list:
                 gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
                 gen_liquibase_changelog_from_csv(ent, fields_list, traits)

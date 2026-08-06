@@ -101,7 +101,7 @@ def gen_detail_view_from_csv(
             xml_relation_data_containers += "                </query>\n"
             xml_relation_data_containers += "            </loader>\n"
             xml_relation_data_containers += "        </collection>\n"
-            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
+            xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc" label="msg://{COMPANY}.{project_name}.entity/{name}.{f_name}">\n'
             xml_form_components += "                <actions>\n"
             xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
             xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
@@ -225,7 +225,7 @@ def gen_detail_view_from_csv(
         xml_relation_data_containers += "                </query>\n"
         xml_relation_data_containers += "            </loader>\n"
         xml_relation_data_containers += "        </collection>\n"
-        xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}">\n'
+        xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" label="msg://{COMPANY}.{project_name}.entity/{name}.{f_name}">\n'
         xml_form_components += "                <actions>\n"
         xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
         xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
