@@ -149,7 +149,7 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, str]]) -> 
             container_block_start = '        <vbox>\n'
             container_block_start += f'            <h3 text="msg://{COMPANY}.{project_name}.view.{source_name.lower()}/{source_name.lower()}ListView.title"/>\n'
             buttons_block = ""
-            grid_block = f'            <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI" readOnly="true">\n'
+            grid_block = f'            <dataGrid id="{grid_id}" dataContainer="{container_id}" selectionMode="MULTI">\n'
             grid_block += "                <columns>\n"
             for col in column_props:
                 grid_block += f'                    <column property="{col}"/>\n'
@@ -160,9 +160,10 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, str]]) -> 
             continue
 
         if f'id="{tgt_lower}Dc"' in xml_content and "</instance>" in xml_content:
+            fetch_plan_block = '            <fetchPlan extends="_base">\n                <property name="' + inv_field_name + '" fetchPlan="_base"/>\n            </fetchPlan>\n'
             xml_content = xml_content.replace(
                 f'<loader id="{tgt_lower}Dl"/>',
-                f'<loader id="{tgt_lower}Dl"/>\n{container_block}'
+                f'{fetch_plan_block}            <loader id="{tgt_lower}Dl"/>\n{container_block}'
             )
             xml_content = xml_content.replace('</instance>\n        </data>', f'        </instance>\n    </data>')
         if "</formLayout>" in xml_content:
