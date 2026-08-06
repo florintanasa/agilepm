@@ -220,20 +220,120 @@ def generate_all_entities() -> None:
             traits = get_traits_from_csv("traits.csv", ent)
             fields_list = get_entities_from_csv("entities.csv", ent)
             relations_list = get_relations_from_csv("relations.csv", ent)
+            if not fields_list:
+                raise UserInputError(f"No fields found for the entity '{name}' in entities.csv")
+
+            entity_exists = has_existing_entity_and_changelog(name)
+
+            if entity_exists:
+                logger.info(f"Entity {name} exists. Updating Java class and checking for incremental migrations...")
+                gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
+                migrate_entity(name, mode="quiet")
+            else:
+                logger.info(f"Generating Entity {name} from CSV architecture...")
+                gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
+
+            computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == name.strip()]
+            if not computed_traits_list:
+                computed_traits_list = ["name"]
+            update_messages_entity(
+                project_dir=".",
+                base_package=COMPANY + "." + project_name,
+                entity_name=name,
+                traits_list=computed_traits_list,
+                relations_list=relations_list,
+            )
+            _update_menu(name)
+            if not entity_exists:
+                gen_liquibase_changelog_from_csv(name, fields_list, traits)
+            if relations_list:
+                migrate_entity(name, mode="quiet")
+
+
+def generate_all_entities() -> None:
+    from jmix_cli.cli.dry_run import inject_audit_dependencies, _finalize_composition_relationships, _patch_globals_for_dry_run, _copy_project_to_temp
+    inject_audit_dependencies()
+    logger.info("[*] Launching ENTITY-ONLY generation for ALL entities...")
+    ordered_list = get_sorted_entities_by_dependency()
+    logger.info(f"[*] Calculated generation sequence: {ordered_list}")
+    for ent in ordered_list:
+        if ent == "User":
+            relations_list = get_relations_from_csv("relations.csv", "User")
+            if relations_list:
+                gen_liquibase_relations_changelog("User", relations_list)
+                inject_relations_into_existing_user("User", relations_list)
+                inverse_user_rels = _get_inverse_composition_relations("User")
+                relations_list = relations_list + inverse_user_rels
+                from jmix_cli.i18n import ask_ollama_translation
+                resources_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name
+                messages_files = list(resources_path.glob("messages*.properties"))
+                from jmix_cli.core.constants import ISO_LANG_NAMES
+                for messages_file in messages_files:
+                    stem = messages_file.stem
+                    lang_code = "en" if stem == "messages" else stem.split("_", 1)[1] if "_" in stem else stem
+                    primary_iso = lang_code.split("_")[0].lower()
+                    lang_name = ISO_LANG_NAMES.get(primary_iso, primary_iso)
+                    relation_lines = []
+                    for rel in relations_list:
+                        f_name = rel["field"]
+                        spaced_name = (
+                            "".join([" " + c if c.isupper() else c for c in f_name]).strip().lower()
+                        )
+                        readable_en = spaced_name.capitalize()
+                        if lang_code == "en":
+                            label = readable_en
+                        else:
+                            label = ask_ollama_translation(readable_en, lang_name)
+                            if not label or len(label) > 50:
+                                label = readable_en
+                        relation_lines.append(f"{COMPANY}.{project_name}.entity/User.{f_name}={label}")
+                    existing_lines = messages_file.read_text(encoding="utf-8").splitlines() if messages_file.exists() else []
+                    user_lines = [line for line in existing_lines if line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                    non_user_lines = [line for line in existing_lines if not line.startswith(f"{COMPANY}.{project_name}.entity/User.")]
+                    combined_user_lines = list(dict.fromkeys(user_lines + relation_lines))
+                    new_content = "\n".join(non_user_lines + combined_user_lines) + "\n"
+                    messages_file.write_text(new_content, encoding="utf-8")
+            _update_menu("User")
+            computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == "User".strip()]
+            if not computed_traits_list:
+                computed_traits_list = ["name"]
+            update_messages_entity(
+                ".", COMPANY + "." + project_name, "User", computed_traits_list, []
+            )
+        else:
+            traits = get_traits_from_csv("traits.csv", ent)
+            fields_list = get_entities_from_csv("entities.csv", ent)
+            relations_list = get_relations_from_csv("relations.csv", ent)
             inverse_rels = _get_inverse_composition_relations(ent)
-            relations_list = relations_list + inverse_rels
-            if fields_list:
+            relations_list_for_messages = relations_list + inverse_rels
+            if not fields_list:
+                raise UserInputError(f"No fields found for the entity '{ent}' in entities.csv")
+
+            entity_exists = has_existing_entity_and_changelog(ent)
+
+            if entity_exists:
+                logger.info(f"Entity {ent} exists. Updating Java class and checking for incremental migrations...")
                 gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
+                migrate_entity(ent, mode="quiet")
+            else:
+                logger.info(f"Generating Entity {ent} from CSV architecture...")
+                gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
+
+            computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
+            if not computed_traits_list:
+                computed_traits_list = ["name"]
+            update_messages_entity(
+                project_dir=".",
+                base_package=COMPANY + "." + project_name,
+                entity_name=ent,
+                traits_list=computed_traits_list,
+                relations_list=relations_list_for_messages,
+            )
+            _update_menu(ent)
+            if not entity_exists:
                 gen_liquibase_changelog_from_csv(ent, fields_list, traits)
-                if relations_list:
-                    gen_liquibase_relations_changelog(ent, relations_list)
-                computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
-                if not computed_traits_list:
-                    computed_traits_list = ["name"]
-                update_messages_entity(
-                    ".", COMPANY + "." + project_name, ent, computed_traits_list, relations_list
-                )
-                _update_menu(ent)
+            if relations_list:
+                migrate_entity(ent, mode="quiet")
     from jmix_cli.cli.dry_run import _finalize_composition_relationships
     logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
     for ent in ordered_list:
