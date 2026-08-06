@@ -87,6 +87,9 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
         <createIndex tableName="{src_table}" indexName="IDX_{src_table}_UNQ_{col_name}" unique="true">
             <column name="{col_name}"/>
         </createIndex>
+        <addForeignKeyConstraint baseTableName="{src_table}" baseColumnNames="{col_name}"
+                                  constraintName="{fk_name}"
+                                  referencedTableName="{tgt_table}" referencedColumnNames="ID"/>
     </changeSet>"""
                 )
             else:

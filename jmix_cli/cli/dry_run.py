@@ -360,8 +360,11 @@ def _finalize_composition_relationships() -> None:
             fk_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog" / current_year / current_month
             fk_dir.mkdir(parents=True, exist_ok=True)
             existing_fk = list(fk_dir.glob(f"*-03-fk-{src_class.lower()}.xml"))
-            if existing_fk:
+            existing_relations = list(fk_dir.glob(f"*-02-relations-{src_class.lower()}.xml"))
+            if existing_fk and not existing_relations:
                 logger.info(f" 🔗 FK constraint changelog already exists for {src_class}, skipping")
+            elif existing_fk and existing_relations:
+                logger.info(f" 🔗 FK constraint already included in relations changelog for {src_class}, skipping")
             else:
                 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                 fk_file = fk_dir / f"{timestamp}-03-fk-{src_class.lower()}.xml"

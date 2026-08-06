@@ -233,6 +233,9 @@ def generate_all_entities() -> None:
                 logger.info(f"Generating Entity {name} from CSV architecture...")
                 gen_entity_mechanic_from_csv(name, fields_list, traits, relations_list)
 
+            if relations_list:
+                gen_liquibase_relations_changelog(name, relations_list)
+
             computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == name.strip()]
             if not computed_traits_list:
                 computed_traits_list = ["name"]
@@ -318,6 +321,9 @@ def generate_all_entities() -> None:
             else:
                 logger.info(f"Generating Entity {ent} from CSV architecture...")
                 gen_entity_mechanic_from_csv(ent, fields_list, traits, relations_list)
+
+            if relations_list:
+                gen_liquibase_relations_changelog(ent, relations_list)
 
             computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
             if not computed_traits_list:
