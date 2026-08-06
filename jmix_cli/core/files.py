@@ -67,7 +67,8 @@ def replace_entity_messages(file_path: str, base_package: str, entity_name: str,
                 seen_keys.add(key)
                 last_entity_idx = len(result) - 1
             else:
-                continue
+                result.append(line)
+                last_entity_idx = len(result) - 1
         else:
             result.append(line)
 
