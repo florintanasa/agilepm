@@ -26,6 +26,7 @@
 
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from jmix_cli.core.files import ensure_dir, write_file
