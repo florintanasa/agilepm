@@ -197,10 +197,12 @@ def gen_detail_view_from_csv(
                 if _row["target_entity"].strip().lower() == name.lower():
                     r_type = _row["relation_type"].strip().upper()
                     if r_type == "COMPOSITION_1:1":
+                        src_class = _row["source_entity"].strip()
+                        inv_field_name = src_class[0].lower() + src_class[1:]
                         inverse_composition_rels.append({
                             "type": _row["relation_type"].strip(),
-                            "target": _row["source_entity"].strip(),
-                            "field": _row["field_name"].strip(),
+                            "target": src_class,
+                            "field": inv_field_name,
                             "mandatory": _row["mandatory"].strip().lower() == "true",
                         })
                     elif r_type == "COMPOSITION_1:N":
@@ -223,7 +225,7 @@ def gen_detail_view_from_csv(
         xml_relation_data_containers += "                </query>\n"
         xml_relation_data_containers += "            </loader>\n"
         xml_relation_data_containers += "        </collection>\n"
-        xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
+        xml_form_components += f'            <entityComboBox id="{f_name}Field" property="{f_name}">\n'
         xml_form_components += "                <actions>\n"
         xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
         xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
