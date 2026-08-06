@@ -216,6 +216,7 @@ def cmd_init_project(project_name: str, target_group: str, lang_input: str = "en
         content = content.replace(old_package_dots, base_package)
         content = content.replace(old_package_slashes, new_package_property_slashes)
         content = content.replace("com.company.project", base_package)
+        content = content.replace("com.company.agilepm", base_package)
         file_path.write_text(content, encoding="utf-8")
 
     gradlew_path = target_dir / "gradlew"
