@@ -337,37 +337,4 @@ def _finalize_composition_relationships() -> None:
                     )
                 tgt_file_path.write_text(tgt_content, encoding="utf-8")
 
-            stable_fk_id = f"{src_class.lower()}-add-fk-{f_name}"
-            fk_changelog = f"""<?xml version="1.0" encoding="UTF-8" ?>
-<databaseChangeLog
-    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
-    objectQuotingStrategy="QUOTE_ONLY_RESERVED_WORDS"
->
-    <changeSet id="{stable_fk_id}" author="{project_name}">
-        <addForeignKeyConstraint baseTableName="{src_class.upper()}"
-                                  baseColumnNames="{f_name.upper()}_ID"
-                                  constraintName="FK_{src_class.upper()}_ON_{f_name}"
-                                  referencedTableName="{tgt_class.upper()}"
-                                  referencedColumnNames="ID"/>
-    </changeSet>
-</databaseChangeLog>
-"""
-            current_year = datetime.now().strftime("%Y")
-            current_month = datetime.now().strftime("%m")
-            fk_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog" / current_year / current_month
-            fk_dir.mkdir(parents=True, exist_ok=True)
-            existing_fk = list(fk_dir.glob(f"*-03-fk-{src_class.lower()}.xml"))
-            existing_relations = list(fk_dir.glob(f"*-02-relations-{src_class.lower()}.xml"))
-            if existing_fk and not existing_relations:
-                logger.info(f" 🔗 FK constraint changelog already exists for {src_class}, skipping")
-            elif existing_fk and existing_relations:
-                logger.info(f" 🔗 FK constraint already included in relations changelog for {src_class}, skipping")
-            else:
-                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-                fk_file = fk_dir / f"{timestamp}-03-fk-{src_class.lower()}.xml"
-                fk_file.write_text(fk_changelog, encoding="utf-8")
-                logger.info(f" 🔗 Added FK constraint changelog: {fk_file}")
     logger.info("\n✅ Entity generation completed!")

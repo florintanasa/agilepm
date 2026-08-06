@@ -156,5 +156,9 @@ def gen_liquibase_relations_changelog(name: str, relations_list: list[dict[str, 
     )
     ensure_dir(target_dir)
     filename = f"{target_dir}/{timestamp}-02-relations-{name.lower()}.xml"
+    for existing in Path(target_dir).glob(f"*-02-relations-{name.lower()}.xml"):
+        if existing.read_text(encoding="utf-8").strip() == xml_content.strip():
+            logger.info(f" -> Relations changelog already exists and is up-to-date: {existing}")
+            return
     write_file(filename, xml_content)
     logger.info(f" -> Generated Liquibase Relations XML: {filename}")
