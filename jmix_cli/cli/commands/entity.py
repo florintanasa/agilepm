@@ -186,6 +186,12 @@ def generate_all_entities() -> None:
                     new_content = "\n".join(non_user_lines + combined_user_lines) + "\n"
                     messages_file.write_text(new_content, encoding="utf-8")
             _update_menu("User")
+            computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == "User".strip()]
+            if not computed_traits_list:
+                computed_traits_list = ["name"]
+            update_messages_entity(
+                ".", COMPANY + "." + project_name, "User", computed_traits_list, []
+            )
         else:
             traits = get_traits_from_csv("traits.csv", ent)
             fields_list = get_entities_from_csv("entities.csv", ent)
