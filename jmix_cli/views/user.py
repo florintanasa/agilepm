@@ -186,6 +186,34 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]], fi
                 ui_block += "            </entityComboBox>\n"
             accumulated_form_components += ui_block
             modified = True
+
+    fetch_plan_props = ""
+    for rel in relations_list:
+        rel_type = rel["type"].strip().upper()
+        if rel_type not in {"N:1", "1:1", "N:N"}:
+            continue
+        f_name = rel["field"].strip()
+        fetch_plan_props += f"                <property name=\"{f_name}\" fetchPlan=\"_base\"/>\n"
+    if fetch_plan_props and 'id="userDc"' in xml_content:
+        instance_fp_pattern = r'(<instance id="userDc"[^>]*>\s*)<fetchPlan extends="_base"/>(\s*<loader/>)'
+        replacement = r'\1<fetchPlan extends="_base">\n' + fetch_plan_props + r'            </fetchPlan>\n\2'
+        if re.search(instance_fp_pattern, xml_content):
+            xml_content = re.sub(instance_fp_pattern, replacement, xml_content, count=1)
+            modified = True
+        else:
+            instance_fp_pattern2 = r'(<instance id="userDc"[^>]*>\s*<fetchPlan extends="_base">)(.*?)(</fetchPlan>)(\s*<loader/>)'
+            match = re.search(instance_fp_pattern2, xml_content, re.DOTALL)
+            if match:
+                existing_props = match.group(2)
+                new_props = []
+                for prop_line in fetch_plan_props.strip().split('\n'):
+                    prop_name = prop_line.split('name="')[1].split('"')[0] if 'name="' in prop_line else None
+                    if prop_name and f'name="{prop_name}"' not in existing_props:
+                        new_props.append(prop_line)
+                if new_props:
+                    new_fp = match.group(1) + existing_props + '\n' + '\n'.join(new_props) + match.group(3)
+                    xml_content = xml_content.replace(match.group(0), new_fp + match.group(4), 1)
+                    modified = True
     if modified:
         if accumulated_containers and "</data>" in xml_content:
             xml_content = xml_content.replace(
