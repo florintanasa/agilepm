@@ -39,6 +39,8 @@ from jmix_cli.cli.dry_run import (
     _handle_error,
     _patch_globals_for_dry_run,
     _copy_project_to_temp,
+    _finalize_composition_relationships,
+    update_checkbox_required_state_property,
 )
 from jmix_cli.cli.commands.entity import generate_single_entity, generate_all_entities
 from jmix_cli.cli.commands.migrate import run_migrate, run_migrate_all
@@ -50,9 +52,9 @@ from jmix_cli.cli.commands.ui import (
     generate_all_detail_views,
 )
 from jmix_cli.cli.commands.build import run_build_all
-from jmix_cli.cli.dry_run import inject_audit_dependencies, _finalize_composition_relationships
+from jmix_cli.cli.dry_run import inject_audit_dependencies
 from jmix_cli.entity.relations.base import get_relations_from_csv
-from jmix_cli.entity.generator import _inject_composition_into_parent
+from jmix_cli.entity.generator import _inject_composition_into_parent, get_sorted_entities_by_dependency
 
 logger = get_logger("jmix_cli.cli.main")
 
@@ -155,10 +157,8 @@ def main() -> None:
 
         elif action == "entity-all":
             inject_audit_dependencies()
-            from jmix_cli.cli.dry_run import _finalize_composition_relationships
             generate_all_entities()
             logger.info("\n[⚡] PHASE 1.6: Injecting COMPOSITION_1:N relationships into parent entities...")
-            from jmix_cli.entity import get_sorted_entities_by_dependency, _inject_composition_into_parent
             ordered_list = get_sorted_entities_by_dependency()
             for ent in ordered_list:
                 relations_list = get_relations_from_csv("relations.csv", ent)
@@ -166,7 +166,6 @@ def main() -> None:
                 if composition_rels:
                     _inject_composition_into_parent(ent, composition_rels)
             _finalize_composition_relationships()
-            from jmix_cli.cli.dry_run import update_checkbox_required_state_property
             update_checkbox_required_state_property()
             _finish_dry_run(dry_run_temp_dir, original_dir)
             return
