@@ -36,10 +36,15 @@ from jmix_cli.migrate.adapters import HSQLDBAdapter, get_existing_columns_from_c
 
 
 def get_table_name(entity_name: str) -> str:
+    """Get the database table name for an entity.
+
+    User entity uses USER_ table (Jmix convention).
+    """
     return "USER_" if entity_name == "User" else entity_name.upper()
 
 
 def map_type_to_sql(java_type: str) -> str:
+    """Map Java field type to SQL column type for Liquibase."""
     jt = java_type.lower()
     if jt in ["string", "text"]:
         return "VARCHAR(255)"
@@ -63,14 +68,22 @@ def map_type_to_sql(java_type: str) -> str:
 
 
 def _read_entity_fields(entity_name: str) -> list[dict[str, Any]]:
+    """Read entity fields from entities.csv."""
     return get_entities_from_csv("entities.csv", entity_name)
 
 
 def _read_entity_traits(entity_name: str) -> dict[str, Any]:
+    """Read entity traits from traits.csv."""
     return get_traits_from_csv("traits.csv", entity_name)
 
 
 def _read_all_relations() -> list[dict[str, Any]]:
+    """Read all relations from relations.csv with full source/target info.
+
+    Unlike get_relations_from_csv (which filters by source entity), this
+    returns every row so callers can also check relations where the entity
+    is the *target*.
+    """
     relations_list: list[dict[str, Any]] = []
     csv_file = Path("relations.csv")
     if not csv_file.exists():
@@ -92,6 +105,15 @@ def _read_all_relations() -> list[dict[str, Any]]:
 
 
 def _get_relation_field_names(entity_name: str) -> set[str]:
+    """Get field names from relations.csv for the given entity (as source or target).
+
+    For N:1, 1:1 relations: the forward field is on the *source* entity.
+    For COMPOSITION_1:1: ``_finalize_composition_relationships`` injects the
+    forward field (``{field}``, type = target) into the *source* entity, and
+    ``_inject_composition_into_parent`` may inject the inverse field
+    (``{source_entity_camelCase}``) into the *source* entity.  When the entity
+    is the *target* of a COMPOSITION_1:1, the
+    """
     relations = get_relations_from_csv("relations.csv", entity_name)
     field_names: set[str] = set()
     for rel in relations:
@@ -120,6 +142,18 @@ def _get_relation_field_names(entity_name: str) -> set[str]:
 
 
 def _get_relation_column_names(entity_name: str) -> set[str]:
+    """Get FK column names from relations.csv for the given entity (as source).
+
+    For N:1, 1:1, and COMPOSITION_1:1 relations where the entity is the
+    *source*: ``_finalize_composition_relationships`` injects
+    ``@JoinColumn(name = "{field}_ID")`` into the source entity, so the FK
+    column ``{field}_ID`` lives on the source entity's table.
+
+    When the entity is the *target* of a COMPOSITION_1:1, the FK column is on
+    the *source* entity's table, so nothing is added for the target.
+
+    Al
+    """
     relations = get_relations_from_csv("relations.csv", entity_name)
     column_names: set[str] = set()
     for rel in relations:
@@ -140,6 +174,7 @@ def _get_relation_column_names(entity_name: str) -> set[str]:
 
 
 def detect_missing_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[dict[str, Any]]:
+    """Detect columns that exist in entity but not in database or existing changelogs."""
     table_name = get_table_name(entity_name)
     entity_fields = _read_entity_fields(entity_name)
 
@@ -158,6 +193,10 @@ def detect_missing_columns(entity_name: str, db_adapter: DatabaseAdapter) -> lis
 
 
 def detect_missing_relations(entity_name: str) -> list[dict[str, Any]]:
+    """Check if entity has relations defined but missing changelog entries.
+
+    For N:N both-owning, we need to check if inverse relation also has changelog.
+    """
     relations_list = get_relations_from_csv("relations.csv", entity_name)
     missing_rels = []
 
@@ -182,6 +221,13 @@ def detect_missing_relations(entity_name: str) -> list[dict[str, Any]]:
 
 
 def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[str], list[tuple[str, str]]]:
+    """Detect dropped, added, and renamed fields for an entity.
+
+    Returns:
+        added_fields: fields in entities.csv but missing from existing Java
+        dropped_fields: fields in existing Java but missing from entities.csv
+        renamed_fields: list of (old_name, new_name) where a likely rename was detected
+    """
     csv_fields = _read_entity_fields(entity_name)
     csv_by_name = {f["name"].upper(): f for f in csv_fields}
     java_fields = _get_fields_from_existing_java(entity_name)
@@ -222,6 +268,7 @@ def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[
 
 
 def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
+    """Detect type/mandatory/unique changes for existing fields."""
     csv_fields = _read_entity_fields(entity_name)
     java_fields = _get_fields_from_existing_java(entity_name)
     java_by_name = {f["name"].upper(): f for f in java_fields}
@@ -264,6 +311,16 @@ def detect_field_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
 
 
 def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
+    """Detect mandatory (nullable) changes for relation fields defined in relations.csv.
+
+    Only N:1 and 1:1 relations are checked — these generate a single-valued
+    field with a ``@JoinColumn`` FK column in the Java entity.  The detection
+    compares the ``mandatory`` flag from ``relations.csv`` against the presence
+    of ``@NotNull`` directly above the ``@JoinColumn`` / ``@ManyToOne`` /
+    ``@OneToOne`` annotation block in the existing Java file.
+
+    Each returned change dict uses the FK column name from ``@JoinColumn``.
+    """
     relations = get_relations_from_csv("relations.csv", entity_name)
     if not relations:
         return []
@@ -337,6 +394,13 @@ def detect_relation_metadata_changes(entity_name: str) -> list[dict[str, Any]]:
 
 
 def _names_are_similar(name1: str, name2: str) -> bool:
+    """Check if two field names are similar enough to be considered a rename.
+
+    Uses common prefix length as a heuristic — fields must share at least
+    3 characters in a common prefix to be considered a rename. This prevents
+    false-positive renames between unrelated fields of the same type
+    (e.g. companyName -> address).
+    """
     if not name1 or not name2:
         return False
     min_len = min(len(name1), len(name2))
@@ -350,6 +414,7 @@ def _names_are_similar(name1: str, name2: str) -> bool:
 
 
 def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
+    """Extract business field metadata from an existing Java entity file."""
     entity_path = (
         PROIECT_PATH
         / "src" / "main" / "java" / company_path / project_name / "entity"
@@ -399,6 +464,11 @@ def _get_fields_from_existing_java(entity_name: str) -> list[dict[str, Any]]:
 
 
 def _get_unique_columns_from_java(content: str) -> set[str]:
+    """Extract column names that have a unique constraint from the @Table annotation.
+
+    Parses @Index entries with unique=true and returns the column names
+    (uppercased) from their columnList attribute.
+    """
     unique_columns: set[str] = set()
     for match in re.finditer(r'@Index\s*\(([^)]*)\)', content, re.DOTALL):
         index_body = match.group(1)
@@ -434,6 +504,11 @@ def detect_dropped_columns(entity_name: str, db_adapter: DatabaseAdapter) -> lis
 
 
 def _get_already_dropped_columns(table_name: str) -> set[str]:
+    """Get columns that have already been dropped by previous drop changelogs.
+
+    Parses all changelog XML files for dropColumn changesets targeting the
+    given table, so we don't repeatedly try to drop the same column.
+    """
     changelog_dir = (
         PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog"
     )

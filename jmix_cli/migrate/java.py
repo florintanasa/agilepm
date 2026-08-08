@@ -36,6 +36,10 @@ logger = get_logger("jmix_cli.migrate")
 
 
 def _add_import_after(content: str, class_name: str) -> str:
+    """Add an import for ``class_name`` after the last existing import line.
+
+    If the import already exists, the content is returned unchanged.
+    """
     full_import = f"import {class_name};"
     if full_import in content:
         return content
@@ -49,6 +53,7 @@ def _add_import_after(content: str, class_name: str) -> str:
 
 
 def _append_index_entry(match: re.Match, index_entry: str) -> str:
+    """Append an @Index entry to an existing @Table indexes array."""
     indexes_content = match.group(1).rstrip()
     closing = match.group(2)
     if indexes_content.rstrip().endswith(","):
@@ -57,6 +62,11 @@ def _append_index_entry(match: re.Match, index_entry: str) -> str:
 
 
 def _remove_index_entry(content: str, index_name: str) -> str:
+    """Remove an @Index entry from the @Table indexes array.
+
+    Handles first/last/only entry cases (with/without preceding or trailing comma).
+    If the indexes array becomes empty, removes the entire indexes = { ... } from @Table.
+    """
     escaped = re.escape(index_name)
     pattern = rf"(?:,)?\n[ \t]+@Index\(name\s*=\s*\"{escaped}\".*?\),?"
     new_content = re.sub(pattern, "", content, count=1)
@@ -66,6 +76,7 @@ def _remove_index_entry(content: str, index_name: str) -> str:
 
 
 def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[dict[str, Any]]) -> None:
+    """Inject new fields into existing Java entity file."""
     entity_path = (
         PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
     )
@@ -153,6 +164,7 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
 
 
 def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> None:
+    """Remove fields, getters, and setters from an existing Java entity file."""
     entity_path = (
         PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
     )
@@ -216,6 +228,12 @@ def _remove_fields_from_java(entity_name: str, fields_to_remove: list[str]) -> N
 
 
 def _update_java_for_metadata_changes(entity_name: str, metadata_changes: list[dict[str, Any]]) -> None:
+    """Update Java entity file to reflect metadata changes (mandatory, type, unique).
+
+    For 'nullable' changes: adds/removes @NotNull and updates @Column(nullable=...).
+    For 'type' changes: updates the field declaration, getter return type, and
+    setter parameter type.
+    """
     entity_path = (
         PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "entity" / f"{entity_name}.java"
     )

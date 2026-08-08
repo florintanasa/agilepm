@@ -36,20 +36,27 @@ logger = get_logger("jmix_cli.migrate")
 
 
 class DatabaseAdapter(ABC):
+    """Abstract adapter for database schema introspection."""
+
     @abstractmethod
     def get_columns(self, table_name: str) -> set[str]:
+        """Return set of column names (uppercase) for the given table."""
         pass
 
     @abstractmethod
     def get_table_names(self) -> set[str]:
+        """Return set of table names (uppercase) in the database."""
         pass
 
 
 class HSQLDBAdapter(DatabaseAdapter):
+    """HSQLDB database adapter for schema introspection."""
+
     def __init__(self, db_path: Path | None = None):
         self.db_path = db_path or Path(".jmix/")
 
     def get_columns(self, table_name: str) -> set[str]:
+        """Read columns from HSQLDB .script file by parsing CREATE TABLE statements."""
         table_upper = table_name.upper()
         columns = set()
 
@@ -95,17 +102,28 @@ class HSQLDBAdapter(DatabaseAdapter):
 
 
 class PostgreSQLAdapter(DatabaseAdapter):
+    """PostgreSQL database adapter for schema introspection."""
+
     def __init__(self, connection_url: str | None = None):
         self.connection_url = connection_url
 
     def get_columns(self, table_name: str) -> set[str]:
+        """Query INFORMATION_SCHEMA for table columns."""
         return set()
 
     def get_table_names(self) -> set[str]:
+        """Query INFORMATION_SCHEMA for tables."""
         return set()
 
 
 def get_existing_columns_from_changelogs(table_name: str) -> set[str]:
+    """Read existing column names from Liquibase changelog files.
+
+    Parses all XML changelog files to find columns already defined for the given table.
+    Only extracts columns for the specific table, not all tables.
+    Processes changelogs in filename order to correctly track add/drop sequence:
+    a column that was added, dropped, then re-added will be included.
+    """
     existing_columns = set()
     dropped_columns = set()
 
@@ -158,7 +176,8 @@ def get_existing_columns_from_changelogs(table_name: str) -> set[str]:
 
 
 def get_executed_changelog_ids() -> set[str]:
-    executed = set()
+    """Read executed changeset IDs from DATABASECHANGELOG table in HSQLDB."""
+    executed = set[str]()
     db_changelog = Path(".jmix/DATABASECHANGELOG")
 
     if db_changelog.exists():

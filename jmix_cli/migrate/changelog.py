@@ -34,6 +34,7 @@ from jmix_cli.migrate.diff import get_table_name, map_type_to_sql
 
 
 def gen_add_column_changelog(entity_name: str, fields: list[dict[str, Any]]) -> str:
+    """Generate Liquibase changelog for adding columns."""
     table_name = get_table_name(entity_name)
     change_sets = []
 
@@ -87,6 +88,7 @@ def gen_add_column_changelog(entity_name: str, fields: list[dict[str, Any]]) -> 
 
 
 def gen_drop_column_changelog(entity_name: str, columns: list[str]) -> str:
+    """Generate Liquibase changelog for dropping columns (with warning)."""
     table_name = get_table_name(entity_name)
     change_sets = []
 
@@ -112,6 +114,7 @@ def gen_drop_column_changelog(entity_name: str, columns: list[str]) -> str:
 
 
 def gen_rename_column_changelog(entity_name: str, renames: list[tuple[str, str]]) -> str | None:
+    """Generate Liquibase changelog for renaming columns."""
     if not renames:
         return None
 
@@ -140,6 +143,7 @@ def gen_rename_column_changelog(entity_name: str, renames: list[tuple[str, str]]
 
 
 def gen_modify_column_changelog(entity_name: str, changes: list[dict[str, Any]]) -> str | None:
+    """Generate Liquibase changelog for modifying column type/nullable/unique constraints."""
     if not changes:
         return None
 
