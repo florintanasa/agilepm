@@ -61,7 +61,7 @@ def get_sorted_entities_by_dependency() -> list[str]:
                 if src == tgt:
                     continue
                 if src in dependencies and tgt in all_entities:
-                    if r_type in ["N:1", "1:1"] or "1:N" in r_type:
+                    if r_type in ["N:1", "1:1", "COMPOSITION_1:1"] or "1:N" in r_type:
                         dependencies[src].add(tgt)
     sorted_entities = []
     visiting = set()
