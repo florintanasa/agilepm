@@ -233,13 +233,13 @@ def gen_detail_view_from_csv(
                         f'        <h3 text="msg://{parent_lower}DetailView.{f_name}"/>\n'
                     )
                     composition_grid += f'        <hbox id="{f_name}ButtonsPanel" classNames="buttons-panel">\n'
-                    composition_grid += f'            <button id="{f_name}CreateBtn" action="{grid_id}.create"/>\n'
+                    composition_grid += f'            <button id="{f_name}AddBtn" action="{grid_id}.add"/>\n'
                     composition_grid += f'            <button id="{f_name}EditBtn" action="{grid_id}.edit"/>\n'
                     composition_grid += f'            <button id="{f_name}RemoveBtn" action="{grid_id}.remove"/>\n'
                     composition_grid += "        </hbox>\n"
                     composition_grid += f'        <dataGrid id="{grid_id}" width="100%" minHeight="15em" dataContainer="{f_name}Dc">\n'
                     composition_grid += "            <actions>\n"
-                    composition_grid += '                <action id="create" type="list_create"/>\n'
+                    composition_grid += '                <action id="add" type="list_add"/>\n'
                     composition_grid += '                <action id="edit" type="list_edit"/>\n'
                     composition_grid += '                <action id="remove" type="list_remove"/>\n'
                     composition_grid += "            </actions>\n"
