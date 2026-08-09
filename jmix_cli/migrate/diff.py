@@ -63,7 +63,7 @@ def map_type_to_sql(java_type: str) -> str:
     if jt in ["double"]:
         return "double precision"
     if jt in ["bigdecimal"]:
-        return "NUMERIC(19, 2)"
+        return "DECIMAL"
     return "VARCHAR(255)"
 
 
