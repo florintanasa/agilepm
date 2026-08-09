@@ -44,6 +44,7 @@ from jmix_cli.migrate.diff import (
     detect_field_metadata_changes,
     detect_missing_columns,
     detect_relation_metadata_changes,
+    get_missing_relation_columns,
     get_table_name,
 )
 from jmix_cli.migrate.changelog import (
@@ -263,8 +264,10 @@ def migrate_entity(entity_name: str, mode: str = "prompt") -> None:
         if name.lower() in csv_fields_by_name
     ]
 
-    if missing_fields or added_field_dicts:
-        new_fields = missing_fields + added_field_dicts
+    missing_relation_cols = get_missing_relation_columns(entity_name, db_adapter)
+
+    if missing_fields or added_field_dicts or missing_relation_cols:
+        new_fields = missing_fields + added_field_dicts + missing_relation_cols
         seen_names: set[str] = set()
         new_fields = [
             f for f in new_fields

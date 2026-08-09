@@ -220,6 +220,42 @@ def detect_missing_relations(entity_name: str) -> list[dict[str, Any]]:
     return missing_rels
 
 
+def get_missing_relation_columns(entity_name: str, db_adapter: DatabaseAdapter) -> list[dict[str, Any]]:
+    """Get relation FK columns that are missing from the database/changelog.
+
+    For N:1, 1:1, and COMPOSITION_1:1 relations where the entity is the
+    *source*, the FK column ``{field}_ID`` should exist in the entity's table.
+    This function returns column definitions for those FK columns that are
+    missing from both the database and existing changelogs.
+
+    Returns list of dicts with ``name``, ``type``, and ``mandatory`` keys
+    suitable for ``gen_add_column_changelog``.
+    """
+    table_name = get_table_name(entity_name)
+    db_columns = db_adapter.get_columns(table_name)
+    changelog_columns = get_existing_columns_from_changelogs(table_name)
+    existing_columns = db_columns | changelog_columns
+
+    relations = get_relations_from_csv("relations.csv", entity_name)
+    relation_cols = _get_relation_column_names(entity_name)
+
+    missing = []
+    for rel in relations:
+        rel_type = rel["type"]
+        field = rel["field"].upper()
+        if rel_type in ("N:1", "1:1", "COMPOSITION_1:1"):
+            fk_col = f"{field}_ID"
+            if fk_col in relation_cols and fk_col not in existing_columns:
+                missing.append({
+                    "name": fk_col,
+                    "type": "UUID",
+                    "mandatory": rel.get("mandatory", False),
+                    "unique": False,
+                })
+
+    return missing
+
+
 def detect_changed_fields(entity_name: str) -> tuple[list[dict[str, Any]], list[str], list[tuple[str, str]]]:
     """Detect dropped, added, and renamed fields for an entity.
 
