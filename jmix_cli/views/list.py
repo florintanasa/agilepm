@@ -44,6 +44,12 @@ def gen_list_view_from_csv(
     for rel in relations_list:
         if rel["type"] == "N:1" or rel["type"] == "1:1" or rel["type"] == "COMPOSITION_1:1" or rel["type"] == "COMPOSITION_1:N":
             if rel["type"] == "COMPOSITION_1:N":
+                has_direct_relation = any(
+                    r["type"] in ("N:1", "1:1") and r["target"] == rel["target"]
+                    for r in relations_list
+                )
+                if has_direct_relation:
+                    continue
                 f_name = rel["target"][0].lower() + rel["target"][1:]
             else:
                 f_name = rel["field"]
