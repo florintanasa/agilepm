@@ -141,12 +141,12 @@ def gen_detail_view_from_csv(
             f_name = rel["field"]
             tgt_class = rel["target"]
             tgt_lower = tgt_class.lower()
-            inv_field_name = tgt_class[0].lower() + tgt_class[1:]
             has_direct_relation = any(
                 r["type"] in ("N:1", "1:1") and r["target"] == tgt_class
                 for r in relations_list
             )
             if not has_direct_relation and tgt_class not in created_targets:
+                relation_properties.append(f_name)
                 xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
                 xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
                 xml_relation_data_containers += (
@@ -161,7 +161,7 @@ def gen_detail_view_from_csv(
                 xml_relation_data_containers += "        </collection>\n"
                 created_targets.add(tgt_class)
             if not has_direct_relation:
-                xml_form_components += f'            <multiSelectComboBoxPicker id="{inv_field_name}Field" property="{inv_field_name}" itemsContainer="{tgt_lower}sDc">\n'
+                xml_form_components += f'            <multiSelectComboBoxPicker id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
                 xml_form_components += "                <actions>\n"
                 xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
                 xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
