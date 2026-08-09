@@ -67,6 +67,15 @@ def generate_all_detail_views() -> None:
         relations_list = get_relations_from_csv("relations.csv", ent)
         inverse_rels = _get_inverse_composition_relations(ent)
         relations_list_for_messages = relations_list + inverse_rels
+        for rel in relations_list:
+            if rel["type"] == "COMPOSITION_1:N":
+                inv_field_name = rel["target"][0].lower() + rel["target"][1:]
+                relations_list_for_messages.append({
+                    "type": rel["type"],
+                    "target": rel["target"],
+                    "field": inv_field_name,
+                    "mandatory": rel.get("mandatory", False),
+                })
         if ent == "User":
             if fields_list or relations_list:
                 inject_detail_ui_into_existing_user(relations_list, fields_list)

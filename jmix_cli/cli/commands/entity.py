@@ -59,7 +59,7 @@ def _get_inverse_composition_relations(entity_name: str) -> list[dict[str, Any]]
         for row in reader:
             if row["target_entity"].strip().lower() == entity_name.lower():
                 r_type = row["relation_type"].strip().upper()
-                if r_type == "COMPOSITION_1:1":
+                if r_type == "COMPOSITION_1:1" or r_type == "COMPOSITION_1:N":
                     src_class = row["source_entity"].strip()
                     inv_field_name = src_class[0].lower() + src_class[1:]
                     inverse_rels.append({
