@@ -24,6 +24,9 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
+import csv
+from pathlib import Path
+
 from jmix_cli.views import (
     gen_list_view_from_csv,
     gen_detail_view_from_csv,
@@ -34,6 +37,10 @@ from jmix_cli.views import (
 )
 from jmix_cli.entity import get_entities_from_csv, get_relations_from_csv, get_sorted_entities_by_dependency
 from jmix_cli.entity.generator import _inject_composition_into_parent
+from jmix_cli.cli.commands.entity import _get_inverse_composition_relations
+from jmix_cli.i18n import update_messages_entity
+from jmix_cli.entity.traits import get_traits_from_csv
+from jmix_cli.core.project import COMPANY, project_name
 
 
 def generate_all_list_views() -> None:
@@ -58,11 +65,23 @@ def generate_all_detail_views() -> None:
     for ent in ordered_list:
         fields_list = get_entities_from_csv("entities.csv", ent)
         relations_list = get_relations_from_csv("relations.csv", ent)
+        inverse_rels = _get_inverse_composition_relations(ent)
+        relations_list_for_messages = relations_list + inverse_rels
         if ent == "User":
             if fields_list or relations_list:
                 inject_detail_ui_into_existing_user(relations_list, fields_list)
         elif fields_list:
             gen_detail_view_from_csv(ent, fields_list, relations_list)
+        computed_traits_list = [row["field_name"].strip() for row in csv.DictReader(Path("entities.csv").open(encoding="utf-8")) if row["entity_name"].strip() == ent.strip()]
+        if not computed_traits_list:
+            computed_traits_list = ["name"]
+        update_messages_entity(
+            project_dir=".",
+            base_package=COMPANY + "." + project_name,
+            entity_name=ent,
+            traits_list=computed_traits_list,
+            relations_list=relations_list_for_messages,
+        )
     all_relations = []
     for ent in ordered_list:
         rels = get_relations_from_csv("relations.csv", ent)
