@@ -122,14 +122,12 @@ def inject_composition_ui_into_parent(
         )
         composition_grid += f'        <hbox id="{f_name}ButtonsPanel" classNames="buttons-panel">\n'
         composition_grid += f'            <button id="{f_name}AddBtn" action="{f_name}DataGrid.add"/>\n'
-        composition_grid += f'            <button id="{f_name}EditBtn" action="{f_name}DataGrid.edit"/>\n'
-        composition_grid += f'            <button id="{f_name}RemoveBtn" action="{f_name}DataGrid.remove"/>\n'
+        composition_grid += f'            <button id="{f_name}ExcludeBtn" action="{f_name}DataGrid.exclude"/>\n'
         composition_grid += "        </hbox>\n"
         composition_grid += f'        <dataGrid id="{f_name}DataGrid" width="100%" minHeight="15em" dataContainer="{f_name}Dc">\n'
         composition_grid += "            <actions>\n"
         composition_grid += '                <action id="add" type="list_add"/>\n'
-        composition_grid += '                <action id="edit" type="list_edit"/>\n'
-        composition_grid += '                <action id="remove" type="list_remove"/>\n'
+        composition_grid += '                <action id="exclude" type="list_exclude"/>\n'
         composition_grid += "            </actions>\n"
         composition_grid += "            <columns>\n"
         composition_grid += f"{xml_composition_columns}"
