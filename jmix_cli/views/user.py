@@ -74,11 +74,11 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]], fiel
             f'name="{f_name}"' not in xml_content
             and ('<fetchPlan extends="_base">' in xml_content or '<fetchPlan extends="_base"/>' in xml_content)
         ):
-            fp_prop = f'                <property name="{f_name}" fetchPlan="_base"/>\n'
+            fp_prop = f'                <property name="{f_name}" fetchPlan="_base"/>'
             if '<fetchPlan extends="_base"/>' in xml_content:
                 xml_content = xml_content.replace(
                     '<fetchPlan extends="_base"/>',
-                    f'<fetchPlan extends="_base">\n{fp_prop}            </fetchPlan>',
+                    f'<fetchPlan extends="_base">\n{fp_prop}\n            </fetchPlan>',
                 )
             else:
                 xml_content = xml_content.replace(
@@ -90,10 +90,10 @@ def inject_list_ui_into_existing_user(relations_list: list[dict[str, Any]], fiel
             f'property="{f_name}"' not in xml_content
             and "</columns>" in xml_content
         ):
-            ui_column = f'    <column property="{f_name}"/>\n'
-            xml_content = xml_content.replace(
-                "</columns>", f"{ui_column}            </columns>"
-            )
+            ui_column = f'                <column property="{f_name}"/>\n'
+            closing_idx = xml_content.rfind('</columns>')
+            if closing_idx != -1:
+                xml_content = xml_content[:closing_idx] + ui_column + xml_content[closing_idx:]
             modified = True
     if modified:
         write_file(xml_path, xml_content)
@@ -211,7 +211,7 @@ def inject_detail_ui_into_existing_user(relations_list: list[dict[str, Any]], fi
                     if prop_name and f'name="{prop_name}"' not in existing_props:
                         new_props.append(prop_line)
                 if new_props:
-                    new_fp = match.group(1) + existing_props + '\n' + '\n'.join(new_props) + match.group(3)
+                    new_fp = match.group(1) + existing_props.rstrip() + '\n' + '\n'.join(new_props) + match.group(3)
                     xml_content = xml_content.replace(match.group(0), new_fp + match.group(4), 1)
                     modified = True
     if modified:
