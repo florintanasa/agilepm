@@ -133,10 +133,31 @@ def gen_detail_view_from_csv(
             xml_form_components += "                </actions>\n"
             xml_form_components += "            </multiSelectComboBoxPicker>\n"
         elif rel["type"] == "COMPOSITION_1:N":
-            f_name = rel["field"]
+            parent_field_name = rel["target"][0].lower() + rel["target"][1:]
             parent_class = rel["target"]
             parent_lower = parent_class.lower()
+            relation_properties.append(parent_field_name)
+            xml_relation_data_containers += f'        <collection id="{parent_lower}sDc" class="{COMPANY}.{project_name}.entity.{parent_class}">\n'
+            xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
+            xml_relation_data_containers += (
+                f'            <loader id="{parent_lower}sDl">\n'
+            )
+            xml_relation_data_containers += "                <query>\n"
+            xml_relation_data_containers += (
+                f"                   <![CDATA[select e from {parent_class} e]]>\n"
+            )
+            xml_relation_data_containers += "                </query>\n"
+            xml_relation_data_containers += "            </loader>\n"
+            xml_relation_data_containers += "        </collection>\n"
+            xml_form_components += f'            <entityComboBox id="{parent_field_name}Field" property="{parent_field_name}" itemsContainer="{parent_lower}sDc" label="msg://{COMPANY}.{project_name}.entity/{name}.{parent_field_name}">\n'
+            xml_form_components += "                <actions>\n"
+            xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+            xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+            xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+            xml_form_components += "                </actions>\n"
+            xml_form_components += "            </entityComboBox>\n"
 
+            f_name = rel["field"]
             parent_view_path = (
                 PROIECT_PATH
                 / "src" / "main" / "resources"

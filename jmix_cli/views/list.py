@@ -42,8 +42,11 @@ def gen_list_view_from_csv(
 
     xml_fetch_plan_properties = ""
     for rel in relations_list:
-        if rel["type"] == "N:1" or rel["type"] == "1:1":
-            f_name = rel["field"]
+        if rel["type"] == "N:1" or rel["type"] == "1:1" or rel["type"] == "COMPOSITION_1:1" or rel["type"] == "COMPOSITION_1:N":
+            if rel["type"] == "COMPOSITION_1:N":
+                f_name = rel["target"][0].lower() + rel["target"][1:]
+            else:
+                f_name = rel["field"]
             xml_fetch_plan_properties += (
                 f'                <property name="{f_name}" fetchPlan="_base"/>\n'
             )
