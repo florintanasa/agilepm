@@ -25,6 +25,7 @@
 # -
 
 from pathlib import Path
+import re
 from typing import Any
 
 from jmix_cli.core.project import COMPANY, PROIECT_PATH, company_path, project_name
@@ -47,6 +48,33 @@ _FIELD_TYPE_TO_DATATYPE = {
 
 def _java_type_to_datatype(f_type: str) -> str | None:
     return _FIELD_TYPE_TO_DATATYPE.get(f_type.lower())
+
+
+def _cleanup_view_xml(xml_content: str) -> str:
+    content = xml_content
+    content = re.sub(
+        r'(<instance[^>]*>\s*<fetchPlan extends="_base">)(.*?)(</fetchPlan>\s*<fetchPlan extends="_base">)(.*?)(</fetchPlan>)',
+        r'\1\2\4\5',
+        content,
+        flags=re.DOTALL,
+    )
+    first_instance_end = content.find('</instance>')
+    data_end = content.find('</data>')
+    if first_instance_end != -1 and data_end != -1 and data_end > first_instance_end:
+        between = content[first_instance_end:data_end + len('</data>')]
+        orphaned_close_pattern = re.compile(
+            r'^(.*?)</instance>\n        ((?:<collection[^>]*>\s*<fetchPlan[^>]*/>\s*<loader[^>]*>\s*<query>\s*<!\[CDATA\[.*?\]\]>\s*</query>\s*</loader>\s*</collection>\s*)+)(</instance>\n\s*</data>)',
+            re.DOTALL,
+        )
+        m_check = orphaned_close_pattern.search(between)
+        if m_check:
+            print(f'DEBUG: Found orphaned instance in view, fixing...')
+        def move_orphaned_collections_inside_instance(m: re.Match) -> str:
+            return m.group(1) + m.group(2) + "        </instance>\n    </data>"
+        fixed_between = orphaned_close_pattern.sub(move_orphaned_collections_inside_instance, between)
+        if fixed_between != between:
+            content = content[:first_instance_end] + fixed_between + content[data_end + len('</data>'):]
+    return content
 
 
 def gen_detail_view_from_csv(
@@ -79,6 +107,7 @@ def gen_detail_view_from_csv(
 
     xml_relation_data_containers = ""
     relation_properties = []
+    created_targets: set[str] = set()
     for rel in relations_list:
         if (
             rel["type"] == "N:1"
@@ -112,26 +141,33 @@ def gen_detail_view_from_csv(
             f_name = rel["field"]
             tgt_class = rel["target"]
             tgt_lower = tgt_class.lower()
-            relation_properties.append(f_name)
-            xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
-            xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
-            xml_relation_data_containers += (
-                f'            <loader id="{tgt_lower}sDl">\n'
+            inv_field_name = tgt_class[0].lower() + tgt_class[1:]
+            has_direct_relation = any(
+                r["type"] in ("N:1", "1:1") and r["target"] == tgt_class
+                for r in relations_list
             )
-            xml_relation_data_containers += "                <query>\n"
-            xml_relation_data_containers += (
-                f"                   <![CDATA[select e from {tgt_class} e]]>\n"
-            )
-            xml_relation_data_containers += "                </query>\n"
-            xml_relation_data_containers += "            </loader>\n"
-            xml_relation_data_containers += "        </collection>\n"
-            xml_form_components += f'            <multiSelectComboBoxPicker id="{f_name}Field" property="{f_name}" itemsContainer="{tgt_lower}sDc">\n'
-            xml_form_components += "                <actions>\n"
-            xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
-            xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
-            xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
-            xml_form_components += "                </actions>\n"
-            xml_form_components += "            </multiSelectComboBoxPicker>\n"
+            if not has_direct_relation and tgt_class not in created_targets:
+                xml_relation_data_containers += f'        <collection id="{tgt_lower}sDc" class="{COMPANY}.{project_name}.entity.{tgt_class}">\n'
+                xml_relation_data_containers += '            <fetchPlan extends="_base"/>\n'
+                xml_relation_data_containers += (
+                    f'            <loader id="{tgt_lower}sDl">\n'
+                )
+                xml_relation_data_containers += "                <query>\n"
+                xml_relation_data_containers += (
+                    f"                   <![CDATA[select e from {tgt_class} e]]>\n"
+                )
+                xml_relation_data_containers += "                </query>\n"
+                xml_relation_data_containers += "            </loader>\n"
+                xml_relation_data_containers += "        </collection>\n"
+                created_targets.add(tgt_class)
+            if not has_direct_relation:
+                xml_form_components += f'            <multiSelectComboBoxPicker id="{inv_field_name}Field" property="{inv_field_name}" itemsContainer="{tgt_lower}sDc">\n'
+                xml_form_components += "                <actions>\n"
+                xml_form_components += '                    <action id="entityLookupAction" type="entity_lookup"/>\n'
+                xml_form_components += '                    <action id="entityOpenAction" type="entity_open"/>\n'
+                xml_form_components += '                    <action id="entityClearAction" type="entity_clear"/>\n'
+                xml_form_components += "                </actions>\n"
+                xml_form_components += "            </multiSelectComboBoxPicker>\n"
         elif rel["type"] == "COMPOSITION_1:N":
             parent_field_name = rel["target"][0].lower() + rel["target"][1:]
             parent_class = rel["target"]
@@ -174,9 +210,15 @@ def gen_detail_view_from_csv(
                 grid_id = f"{f_name}DataGrid"
                 if f'id="{grid_id}"' not in parent_xml:
                     container_block = f'    <collection id="{f_name}Dc" property="{f_name}"/>\n'
-                    if f'id="{parent_lower}Dc"' in parent_xml and "</instance>" in parent_xml:
+                if f'id="{parent_lower}Dc"' in parent_xml:
+                    orphaned_instance = f"\n        </instance>"
+                    if orphaned_instance in parent_xml:
                         parent_xml = parent_xml.replace(
-                            "</instance>", f"{container_block}        </instance>"
+                            orphaned_instance, f"{container_block}    </instance>", 1
+                        )
+                    elif "</instance>" in parent_xml:
+                        parent_xml = parent_xml.replace(
+                            "</instance>", f"{container_block}    </instance>", 1
                         )
 
                     child_fields = get_entities_from_csv("entities.csv", name)
@@ -313,5 +355,6 @@ public class {name}DetailView extends StandardDetailView<{name}> {{
 
     view_dir = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "view" / lower_name
     java_dir = PROIECT_PATH / "src" / "main" / "java" / company_path / project_name / "view" / lower_name
-    write_file(view_dir / f"{lower_name}-detail-view.xml", xml_content)
+    cleaned_xml = _cleanup_view_xml(xml_content)
+    write_file(view_dir / f"{lower_name}-detail-view.xml", cleaned_xml)
     write_file(java_dir / f"{name}DetailView.java", java_content)

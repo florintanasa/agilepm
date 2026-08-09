@@ -160,11 +160,24 @@ def inject_nn_grid_into_inverse_entity(relations_list: list[dict[str, str]]) -> 
             continue
 
         if f'id="{tgt_lower}Dc"' in xml_content and "</instance>" in xml_content:
-            fetch_plan_block = '            <fetchPlan extends="_base">\n                <property name="' + inv_field_name + '" fetchPlan="_base"/>\n            </fetchPlan>\n'
-            xml_content = xml_content.replace(
-                f'<loader id="{tgt_lower}Dl"/>',
-                f'{fetch_plan_block}            <loader id="{tgt_lower}Dl"/>\n{container_block}'
-            )
+            fetch_plan_property = f'                <property name="{inv_field_name}" fetchPlan="_base"/>\n'
+            if '<fetchPlan extends="_base">' in xml_content:
+                existing_fp_end = xml_content.find('</fetchPlan>')
+                if existing_fp_end != -1:
+                    insert_pos = xml_content.rfind('\n', 0, existing_fp_end)
+                    xml_content = xml_content[:insert_pos] + '\n' + fetch_plan_property + xml_content[insert_pos + 1:]
+                if '<collection id="' + container_id + '"' not in xml_content:
+                    fp_end_pos = xml_content.find('</fetchPlan>')
+                    if fp_end_pos != -1:
+                        after_fp = xml_content.find('\n', fp_end_pos)
+                        if after_fp != -1:
+                            xml_content = xml_content[:after_fp + 1] + container_block + xml_content[after_fp + 1:]
+            else:
+                fetch_plan_block = '            <fetchPlan extends="_base">\n' + fetch_plan_property + '            </fetchPlan>\n'
+                xml_content = xml_content.replace(
+                    f'<loader id="{tgt_lower}Dl"/>',
+                    f'{fetch_plan_block}            <loader id="{tgt_lower}Dl"/>\n{container_block}'
+                )
             xml_content = xml_content.replace('</instance>\n        </data>', f'        </instance>\n    </data>')
         if "</formLayout>" in xml_content:
             replacement = f"</formLayout>\n{container_block_start}{buttons_block}{grid_block}{container_block_finish}"
