@@ -90,7 +90,7 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
         f_name = field["name"]
         f_type = field["type"]
 
-        if f"private {f_type} {f_name};" in content:
+        if f"private {f_type} {f_name};" in content or f"private {f_type} {f_name} = false;" in content:
             continue
 
         type_import_map = {
@@ -114,7 +114,7 @@ def inject_new_fields_into_existing_entity(entity_name: str, new_fields: list[di
             column_annotation = f'    @Column(name = "{f_name.upper()}", nullable = false)\n'
         else:
             column_annotation = f'    @Column(name = "{f_name.upper()}")\n'
-        field_declaration = f"    private {f_type} {f_name};\n\n"
+        field_declaration = f"    private {f_type} {f_name}{' = false' if f_type.lower() == 'boolean' and field.get('mandatory') else ''};\n\n"
 
         field_block = f"{validation_anno}{column_annotation}{field_declaration}"
 
