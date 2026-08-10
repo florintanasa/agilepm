@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,22 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.entity.fields import get_entities_from_csv
+from jmix_cli.entity.traits import get_traits_from_csv
+from jmix_cli.entity.relations.base import get_relations_from_csv
+from jmix_cli.entity.generator import (
+    get_sorted_entities_by_dependency,
+    has_existing_entity_and_changelog,
+    gen_entity_mechanic_from_csv,
+    _inject_composition_into_parent,
+)
 
-if __name__ == "__main__":
-    main()
+__all__ = [
+    "get_entities_from_csv",
+    "get_traits_from_csv",
+    "get_relations_from_csv",
+    "get_sorted_entities_by_dependency",
+    "has_existing_entity_and_changelog",
+    "gen_entity_mechanic_from_csv",
+    "_inject_composition_into_parent",
+]

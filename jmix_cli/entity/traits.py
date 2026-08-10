@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,34 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+import csv
+from pathlib import Path
 
-if __name__ == "__main__":
-    main()
+from jmix_cli.core.csv import validate_csv_path
+
+
+def get_traits_from_csv(csv_path: str, target_entity_name: str) -> dict[str, str]:
+    traits = {
+        "versioned": True,
+        "audit_of_creation": True,
+        "audit_of_modification": True,
+        "soft_delete": False,
+    }
+    csv_file = Path(csv_path)
+    if not csv_file.exists():
+        return traits
+    validate_csv_path(csv_path, ["entity_name", "versioned", "audit_of_creation", "audit_of_modification", "soft_delete"])
+    with csv_file.open(mode="r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["entity_name"].strip().lower() == target_entity_name.lower():
+                traits["versioned"] = row["versioned"].strip().lower() == "true"
+                traits["audit_of_creation"] = (
+                    row["audit_of_creation"].strip().lower() == "true"
+                )
+                traits["audit_of_modification"] = (
+                    row["audit_of_modification"].strip().lower() == "true"
+                )
+                traits["soft_delete"] = row["soft_delete"].strip().lower() == "true"
+                break
+    return traits

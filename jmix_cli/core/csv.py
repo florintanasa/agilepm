@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,21 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+import csv
+import os
+from pathlib import Path
 
-if __name__ == "__main__":
-    main()
+from jmix_cli.exceptions import InvalidCsvError
+
+
+def validate_csv_path(csv_path: str, required_columns: list[str]) -> list[dict]:
+    if not os.path.exists(csv_path):
+        raise InvalidCsvError(csv_path)
+    with open(csv_path, mode="r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            raise InvalidCsvError(csv_path, message=f"CSV file is empty: {csv_path}")
+        missing = set(required_columns) - set(reader.fieldnames)
+        if missing:
+            raise InvalidCsvError(csv_path, missing_columns=sorted(list(missing)))
+        return list(reader)

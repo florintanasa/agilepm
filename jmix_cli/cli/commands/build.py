@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,16 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.cli.commands.entity import generate_all_entities
+from jmix_cli.cli.commands.ui import generate_all_list_views, generate_all_detail_views
+from jmix_cli.cli.commands.security import run_security
+from jmix_cli.cli.dry_run import inject_audit_dependencies, update_checkbox_required_state_property
 
-if __name__ == "__main__":
-    main()
+
+def run_build_all(dry_run: bool = False) -> None:
+    inject_audit_dependencies()
+    generate_all_entities()
+    generate_all_list_views()
+    generate_all_detail_views()
+    run_security()
+    update_checkbox_required_state_property()

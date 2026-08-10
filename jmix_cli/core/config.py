@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,33 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+import json
+from pathlib import Path
 
-if __name__ == "__main__":
-    main()
+from jmix_cli.core.logger import get_logger
+
+logger = get_logger("jmix_cli.core.config")
+
+_OLLAMA_CONFIG_PATH = Path(".config") / "config-ollama.json"
+
+
+def get_ollama_config() -> dict:
+    if _OLLAMA_CONFIG_PATH.exists():
+        try:
+            return json.loads(_OLLAMA_CONFIG_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {
+        "host": "localhost",
+        "port": 11434,
+        "model": "translategemma:4b",
+    }
+
+
+def get_ollama_endpoint() -> tuple[str, int]:
+    cfg = get_ollama_config()
+    return cfg.get("host", "localhost"), int(cfg.get("port", 11434))
+
+
+def get_ollama_model() -> str:
+    return get_ollama_config().get("model", "translategemma:4b")

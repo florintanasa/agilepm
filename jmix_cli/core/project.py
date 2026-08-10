@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,28 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+import re
+from pathlib import Path
 
-if __name__ == "__main__":
-    main()
+
+def get_project_name(settings_path: Path = Path("settings.gradle")) -> str | None:
+    if not settings_path.exists():
+        return None
+    text = settings_path.read_text(encoding="utf-8")
+    m = re.search(r"""rootProject\.name\s*=\s*(['"])(.*?)\1""", text)
+    return m.group(2) if m else None
+
+
+def get_company_name(build_path: Path = Path("build.gradle")) -> str | None:
+    if not build_path.exists():
+        return None
+    text = build_path.read_text(encoding="utf-8")
+    m = re.search(r"""group\s*=\s*(['"])(.*?)\1""", text)
+    return m.group(2) if m else None
+
+
+PROIECT_PATH = Path.cwd()
+PROJECT = get_project_name()
+project_name = (PROJECT or "").lower()
+COMPANY = get_company_name() or ""
+company_path = COMPANY.replace(".", "/")

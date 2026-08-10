@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,11 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.liquibase.base import gen_liquibase_changelog_from_csv, map_type
+from jmix_cli.liquibase.relations import gen_liquibase_relations_changelog
 
-if __name__ == "__main__":
-    main()
+__all__ = [
+    "gen_liquibase_changelog_from_csv",
+    "gen_liquibase_relations_changelog",
+    "map_type",
+]

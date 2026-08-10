@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,41 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+import json
+import threading
+from pathlib import Path
 
-if __name__ == "__main__":
-    main()
+_CACHE_FILE = Path(".ollama_translation_cache.json")
+_cache_lock = threading.Lock()
+_translation_cache: dict[str, str] = {}
+_cache_loaded = False
+
+
+def _load_cache() -> None:
+    global _cache_loaded, _translation_cache
+    if _cache_loaded:
+        return
+    with _cache_lock:
+        if _cache_loaded:
+            return
+        if _CACHE_FILE.exists():
+            try:
+                _translation_cache = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                _translation_cache = {}
+        _cache_loaded = True
+
+
+def _persist_cache() -> None:
+    with _cache_lock:
+        try:
+            _CACHE_FILE.write_text(
+                json.dumps(_translation_cache, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+
+def _cache_key(text: str, target_language_name: str) -> str:
+    return f"{target_language_name}:{text}"

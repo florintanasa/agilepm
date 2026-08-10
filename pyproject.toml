@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jmix-cli"
+version = "0.1.0"
+description = "CLI tool for scaffolding Jmix 2.x projects from CSV schemas"
+license = { text = "BSD-2-Clause" }
+requires-python = ">=3.10"
+authors = [{ name = "Florin Tanasă", email = "florin.tanasa@gmail.com" }]
+dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+]
+
+[project.scripts]
+jmix-cli = "jmix_cli.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jmix_cli*"]

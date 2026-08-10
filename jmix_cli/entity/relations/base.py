@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,31 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+import csv
+from pathlib import Path
+from typing import Any
 
-if __name__ == "__main__":
-    main()
+from jmix_cli.core.csv import validate_csv_path
+
+
+def get_relations_from_csv(csv_path: str, target_entity_name: str) -> list[dict[str, Any]]:
+    relations_list: list[dict[str, Any]] = []
+    csv_file = Path(csv_path)
+    if not csv_file.exists():
+        return relations_list
+    required = ["source_entity", "relation_type", "target_entity", "field_name", "mandatory"]
+    validate_csv_path(csv_path, required)
+    with csv_file.open(mode="r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["source_entity"].strip().lower() == target_entity_name.lower():
+                rel_dict = {
+                    "type": row["relation_type"].strip(),
+                    "target": row["target_entity"].strip(),
+                    "field": row["field_name"].strip(),
+                    "mandatory": row["mandatory"].strip().lower() == "true",
+                }
+                if "ownership" in (reader.fieldnames or []):
+                    rel_dict["ownership"] = row.get("ownership", "").strip()
+                relations_list.append(rel_dict)
+    return relations_list

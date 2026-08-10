@@ -1,4 +1,4 @@
-package com.company.agilepm.listener;
+/*package com.company.agilepm.listener;
 
 import com.company.agilepm.entity.*;
 import io.jmix.core.DataManager;
@@ -81,6 +81,9 @@ public class AgileDemoDataInitializer {
 		devProfile.setUser(developerUser);
 		devProfile = dm.save(devProfile);
 
+		developerUser.setProfile(devProfile);
+		dm.save(developerUser);
+
 		UserConfig devConfig = dm.create(UserConfig.class);
 		devConfig.setTheme("Dark-Mode-Zed");
 		devConfig.setProfile(devProfile);
@@ -91,10 +94,21 @@ public class AgileDemoDataInitializer {
 		mgrProfile.setUser(managerUser);
 		mgrProfile = dm.save(mgrProfile);
 
+		managerUser.setProfile(mgrProfile);
+		dm.save(managerUser);
+
 		UserConfig mgrConfig = dm.create(UserConfig.class);
 		mgrConfig.setTheme("Light-Mode-Standard");
 		mgrConfig.setProfile(mgrProfile);
 		dm.save(mgrConfig);
+
+		UserProfile clientProfile = dm.create(UserProfile.class);
+		clientProfile.setPhoneNumber("+40755511122");
+		clientProfile.setUser(clientUser);
+		clientProfile = dm.save(clientProfile);
+
+		clientUser.setProfile(clientProfile);
+		dm.save(clientUser);
 
 		// 4. Populate Operational Data Structures & Compositions
 		Project projectCRM = dm.create(Project.class);
@@ -197,4 +211,4 @@ public class AgileDemoDataInitializer {
 		tc.setTask(task);
 		dm.save(tc);
 	}
-}
+	}*/

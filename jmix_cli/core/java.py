@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,21 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.core.project import COMPANY, project_name
 
-if __name__ == "__main__":
-    main()
+
+def to_camel_case_lower(text: str) -> str:
+    if not text:
+        return ""
+    text_clean = text.strip()
+    return text_clean[0].lower() + text_clean[1:]
+
+
+def inject_import_if_missing(java_content: str, import_class: str) -> str:
+    full_import = f"import {import_class};"
+    if full_import in java_content:
+        return java_content
+    return java_content.replace(
+        f"package {COMPANY}.{project_name}.entity;",
+        f"package {COMPANY}.{project_name}.entity;\n{full_import}",
+    )

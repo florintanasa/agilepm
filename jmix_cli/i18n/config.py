@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,8 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.core.config import get_ollama_config as get_config
+from jmix_cli.core.config import get_ollama_endpoint as get_endpoint
+from jmix_cli.core.config import get_ollama_model as get_model
 
-if __name__ == "__main__":
-    main()
+__all__ = ["get_config", "get_endpoint", "get_model"]

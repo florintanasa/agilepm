@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,18 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.views.list import gen_list_view_from_csv
+from jmix_cli.views.detail import gen_detail_view_from_csv
+from jmix_cli.views.composition import inject_composition_ui_into_parent
+from jmix_cli.views.user import inject_list_ui_into_existing_user, inject_detail_ui_into_existing_user
+from jmix_cli.views.nn_grid import inject_nn_grid_into_inverse_entity, inject_nn_datagrid_into_source_entity
 
-if __name__ == "__main__":
-    main()
+__all__ = [
+    "gen_list_view_from_csv",
+    "gen_detail_view_from_csv",
+    "inject_composition_ui_into_parent",
+    "inject_list_ui_into_existing_user",
+    "inject_detail_ui_into_existing_user",
+    "inject_nn_grid_into_inverse_entity",
+    "inject_nn_datagrid_into_source_entity",
+]

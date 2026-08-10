@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,25 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+from jmix_cli.core.java import inject_import_if_missing
+from jmix_cli.core.project import COMPANY, PROIECT_PATH, company_path, project_name
 
-if __name__ == "__main__":
-    main()
+
+def build_n1_fields(rel: dict[str, str]) -> tuple[str, str, set[str]]:
+    f_name = rel["field"]
+    tgt_class = rel["target"]
+    sql_col = f"{f_name.upper()}_ID"
+    validation_anno = ""
+    dinamic_imports: set[str] = set()
+    if rel["mandatory"]:
+        validation_anno = "    @NotNull\n"
+        dinamic_imports.add("import jakarta.validation.constraints.NotNull;")
+    join_col = f'@JoinColumn(name = "{sql_col}", nullable = false)' if rel["mandatory"] else f'@JoinColumn(name = "{sql_col}")'
+    field = f'    {join_col}\n{validation_anno}    @ManyToOne(fetch = FetchType.LAZY)\n    private {tgt_class} {f_name};\n\n'
+    caps = f_name[0].upper() + f_name[1:] if len(f_name) > 1 else f_name.upper()
+    methods = f"    public {tgt_class} get{caps}() {{\n        return {f_name};\n    }}\n\n"
+    methods += f"    public void set{caps}({tgt_class} {f_name}) {{\n        this.{f_name} = {f_name};\n    }}\n\n"
+    dinamic_imports.add("import jakarta.persistence.ManyToOne;")
+    dinamic_imports.add("import jakarta.persistence.JoinColumn;")
+    dinamic_imports.add("import jakarta.persistence.FetchType;")
+    return field, methods, dinamic_imports

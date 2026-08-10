@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -
 # Copyright (c) 2026 Florin Tanasă <florin.tanasa@gmail.com>
 #
@@ -25,7 +24,51 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # -
 
-from jmix_cli.cli.main import main
+ISO_LANG_NAMES = {
+    "ar": "Arabic",
+    "ckb": "Central Kurdish",
+    "de": "German",
+    "el": "Greek",
+    "es": "Spanish",
+    "fr": "French",
+    "it": "Italian",
+    "nl": "Dutch",
+    "pt": "Brazilian Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "tr": "Turkish",
+    "zh": "Simplified Chinese",
+}
 
-if __name__ == "__main__":
-    main()
+JMIX_TRANSLATIONS_MAP = {
+    "ar": "ar",
+    "ckb": "ckb",
+    "de": "de",
+    "el": "el",
+    "es": "es",
+    "fr": "fr",
+    "fr_fr": "fr",
+    "it": "it",
+    "nl": "nl",
+    "pt": "pt-br",
+    "pt_BR": "pt-br",
+    "ro": "ro",
+    "ro_RO": "ro",
+    "ro_MD": "ro",
+    "ru": "ru",
+    "tr": "tr",
+    "zh": "zh-cn",
+    "zh_CN": "zh-cn",
+}
+
+_FIELD_TYPE_TO_DATATYPE = {
+    "int": "int",
+    "integer": "int",
+    "long": "long",
+    "double": "double",
+    "bigdecimal": "decimal",
+    "decimal": "decimal",
+    "float": "decimal",
+    "short": "int",
+    "biginteger": "decimal",
+}
