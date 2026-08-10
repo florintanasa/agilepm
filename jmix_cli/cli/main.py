@@ -86,6 +86,9 @@ def main() -> None:
         if dry_run and len(sys.argv) > 1 and sys.argv[1].lower() == "init":
             raise UserInputError("--dry-run nu este suportat pentru 'init'.")
 
+        if dry_run and len(sys.argv) > 1 and sys.argv[1].lower() in ("migrate", "migrate-all"):
+            raise UserInputError("--dry-run nu este suportat pentru 'migrate' sau 'migrate-all'.")
+
         if dry_run:
             sys.argv = [arg for arg in sys.argv if arg != "--dry-run"]
 
