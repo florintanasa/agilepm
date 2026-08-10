@@ -136,12 +136,8 @@ def _read_company_name(build_path: Path) -> str | None:
 
 
 def _patch_globals_for_dry_run(temp_dir: Path) -> None:
-    import jmix_cli.cli.commands.entity as entity
-    import jmix_cli.views as views
-    import jmix_cli.liquibase as liquibase
-    import jmix_cli.security as security
-    import jmix_cli.user as user
-    import jmix_cli.i18n as i18n
+    import sys
+    import jmix_cli.core.project as core_project
 
     company = _read_company_name(temp_dir / "build.gradle") or ""
     project = _read_project_name(temp_dir / "settings.gradle") or ""
@@ -156,10 +152,18 @@ def _patch_globals_for_dry_run(temp_dir: Path) -> None:
         "company_path": company_path,
     }
 
-    for mod in [entity, views, liquibase, security, user, i18n]:
-        for name, value in new_values.items():
-            if hasattr(mod, name):
-                setattr(mod, name, value)
+    for name, value in new_values.items():
+        if hasattr(core_project, name):
+            setattr(core_project, name, value)
+
+    for mod_name, mod in list(sys.modules.items()):
+        if mod_name == "jmix_cli" or mod_name.startswith("jmix_cli."):
+            for name, value in new_values.items():
+                if name in mod.__dict__:
+                    try:
+                        mod.__dict__[name] = value
+                    except Exception:
+                        pass
 
 
 def _print_dry_run_summary(temp_dir: Path, original_dir: Path) -> None:
@@ -207,7 +211,9 @@ def _handle_error(error: Exception) -> None:
 
 
 def inject_audit_dependencies() -> None:
-    build_gradle_path = Path("build.gradle")
+    from jmix_cli.core.project import PROIECT_PATH, company_path, project_name
+
+    build_gradle_path = PROIECT_PATH / "build.gradle"
     if build_gradle_path.exists():
         traits_path = Path("traits.csv")
         if traits_path.exists():
@@ -238,7 +244,7 @@ def inject_audit_dependencies() -> None:
                         build_gradle_path.write_text(content, encoding="utf-8")
                         logger.info("[+] Injected Jmix Audit dependencies into build.gradle")
 
-    changelog_path = Path("src/main/resources") / company_path / project_name / "liquibase" / "changelog.xml"
+    changelog_path = PROIECT_PATH / "src" / "main" / "resources" / company_path / project_name / "liquibase" / "changelog.xml"
     if changelog_path.exists():
         changelog_content = changelog_path.read_text(encoding="utf-8")
         if "/io/jmix/audit/liquibase/changelog.xml" not in changelog_content:
